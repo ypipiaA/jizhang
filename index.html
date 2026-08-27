@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#ff6b4a">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <!-- iOS 添加到主屏幕 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="生活记账">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
+  <title>生活记账 · 轻松管钱</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div>
+          <p class="greeting" id="greeting">你好</p>
+          <h1 class="title">生活记账</h1>
+        </div>
+        <div class="month-picker" id="monthPicker">
+          <button type="button" class="mp-arrow" id="mpPrev" aria-label="上个月">‹</button>
+          <button type="button" class="mp-label" id="mpLabel" aria-haspopup="dialog" aria-expanded="false">2026年8月</button>
+          <button type="button" class="mp-arrow" id="mpNext" aria-label="下个月">›</button>
+        </div>
+      </div>
+
+      <div class="summary-cards">
+        <div class="summary-card income">
+          <span class="label">本月收入</span>
+          <span class="value" id="sumIncome">¥0.00</span>
+        </div>
+        <div class="summary-card expense">
+          <span class="label">本月支出</span>
+          <span class="value" id="sumExpense">¥0.00</span>
+        </div>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="add">记一笔</button>
+      <button class="tab" data-tab="records">账单</button>
+      <button class="tab" data-tab="charts">统计</button>
+    </nav>
+
+    <main class="content">
+      <!-- 记一笔 -->
+      <section class="panel active" id="panel-add">
+        <div class="card">
+          <h2 class="card-title">详细记账</h2>
+          <form id="recordForm" class="record-form">
+            <div class="type-toggle">
+              <button type="button" class="type-btn active" data-type="expense">支出</button>
+              <button type="button" class="type-btn" data-type="income">收入</button>
+            </div>
+
+            <div class="amount-input-wrap">
+              <span class="currency">¥</span>
+              <input type="number" id="amount" step="0.01" min="0.01" placeholder="0.00" required>
+            </div>
+
+            <div class="category-grid" id="categoryGrid"></div>
+
+            <div class="form-row">
+              <label>日期</label>
+              <input type="date" id="recordDate" required>
+            </div>
+            <div class="form-row">
+              <label>备注</label>
+              <input type="text" id="note" placeholder="买了什么？（可选）">
+            </div>
+
+            <button type="submit" class="btn-primary">保存记录</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- 账单 -->
+      <section class="panel" id="panel-records">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">账单明细</h2>
+            <div class="bill-actions">
+              <button type="button" class="btn-ghost" id="btnExport" title="导出全部数据为 JSON 备份">导出</button>
+              <button type="button" class="btn-ghost" id="btnImport" title="从 JSON 备份恢复数据">导入</button>
+              <input type="file" id="importFile" accept="application/json,.json" hidden>
+              <select id="filterType" class="filter-select">
+                <option value="">全部</option>
+                <option value="expense">支出</option>
+                <option value="income">收入</option>
+              </select>
+            </div>
+          </div>
+          <div class="record-list" id="recordList">
+            <p class="empty">暂无记录，记一笔吧～</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 统计 -->
+      <section class="panel" id="panel-charts">
+        <div class="chart-grid">
+          <div class="card chart-card">
+            <h2 class="card-title">支出分类</h2>
+            <div class="chart-wrap">
+              <canvas id="expensePieChart"></canvas>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <h2 class="card-title">每日支出趋势</h2>
+            <div class="chart-wrap">
+              <canvas id="dailyLineChart"></canvas>
+            </div>
+          </div>
+          <div class="card chart-card wide">
+            <h2 class="card-title">年度收支对比</h2>
+            <div class="chart-wrap">
+              <canvas id="monthlyBarChart"></canvas>
+            </div>
+          </div>
+          <div class="card">
+            <h2 class="card-title">本月大额支出 TOP5</h2>
+            <ul class="top-list" id="topExpenses">
+              <li class="empty">暂无数据</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- 月份选择弹层：移动端为底部抽屉，桌面端为居中卡片 -->
+    <div class="mp-mask" id="mpMask" hidden></div>
+    <div class="mp-sheet" id="mpSheet" role="dialog" aria-modal="true" aria-label="选择月份" tabindex="-1" hidden>
+      <div class="mp-sheet-handle"></div>
+      <div class="mp-sheet-header">
+        <span class="mp-sheet-title">选择月份</span>
+        <button type="button" class="mp-today" id="mpToday">回到本月</button>
+      </div>
+      <div class="mp-year-row">
+        <button type="button" class="mp-year-arrow" id="mpYearPrev" aria-label="上一年">‹</button>
+        <span class="mp-year-label" id="mpYearLabel">2026年</span>
+        <button type="button" class="mp-year-arrow" id="mpYearNext" aria-label="下一年">›</button>
+      </div>
+      <div class="mp-month-grid" id="mpMonthGrid"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

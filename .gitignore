@@ -1,0 +1,14 @@
+# Python 本地预览工具产生的文件（不参与部署）
+__pycache__/
+*.pyc
+.venv/
+.idea/
+
+# 本地数据库（旧版数据，属于个人数据不上传）
+records.db
+
+# 部署临时目录（Pages 直连仓库后不再需要）
+deploy/
+
+# Claude 本地配置
+.claude/
