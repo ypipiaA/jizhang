@@ -11,7 +11,8 @@ from urllib.parse import parse_qs, urlparse
 import database as db
 
 ROOT = Path(__file__).parent
-STATIC = ROOT / "static"
+PUBLIC = ROOT / "public"          # 网页文件（部署到 Cloudflare 的就是这个目录）
+STATIC = PUBLIC / "static"
 
 db.init_db()
 
@@ -41,10 +42,10 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
 
         if path == "/":
-            return self._serve_file(ROOT / "index.html", "text/html; charset=utf-8")
+            return self._serve_file(PUBLIC / "index.html", "text/html; charset=utf-8")
 
         if path == "/sw.js":  # Service Worker 必须从根路径提供，才能控制整站
-            return self._serve_file(ROOT / "sw.js", "application/javascript; charset=utf-8")
+            return self._serve_file(PUBLIC / "sw.js", "application/javascript; charset=utf-8")
 
         if path.startswith("/static/"):
             rel = path[len("/static/"):]
