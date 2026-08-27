@@ -251,7 +251,8 @@ function inMonth(r, y, m) {
 }
 
 async function api(url, opts = {}) {
-  const u = new URL(url, location.origin);
+  // 固定的虚拟 base：兼容 file:// 直接打开（此时 location.origin 是 "null"）
+  const u = new URL(url, "http://local");
   const p = u.searchParams;
   const path = u.pathname;
   const method = (opts.method || "GET").toUpperCase();
