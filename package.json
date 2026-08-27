@@ -1,0 +1,12 @@
+{
+  "name": "jizhang",
+  "version": "1.0.0",
+  "private": true,
+  "description": "生活记账 - 纯前端离线记账 PWA",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}
