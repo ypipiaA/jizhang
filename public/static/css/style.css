@@ -101,8 +101,10 @@ body {
 .mp-arrow:active { background: var(--primary-light); color: var(--primary); }
 .mp-arrow:disabled { opacity: 0.3; cursor: default; }
 
+/* 年月文字：可点击弹出月份面板（无下拉箭头，保持简洁） */
 .mp-label {
-  display: inline-block;
+  border: none;
+  background: transparent;
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;
@@ -110,6 +112,9 @@ body {
   padding: 8px 6px;
   min-width: 96px;
   text-align: center;
+  cursor: pointer;
+  border-radius: 999px;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* 月份选择弹层 */
@@ -765,6 +770,13 @@ body {
   .category-grid { grid-template-columns: repeat(4, 1fr); }
 
   .amount-input-wrap input { font-size: 32px; width: 150px; }
+
+  /* 日期框字号调小：原生日历弹窗随字号等比缩小
+     （viewport 已设 maximum-scale=1，小于 16px 不会再触发 iOS 聚焦放大） */
+  .form-row input[type="date"] {
+    font-size: 13px;
+    min-height: 40px;
+  }
 
   .chart-grid { grid-template-columns: 1fr; }
 
