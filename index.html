@@ -70,7 +70,7 @@
 
             <div class="form-row">
               <label>日期</label>
-              <input type="date" id="recordDate" required>
+              <input type="text" id="recordDate" readonly required aria-haspopup="dialog">
             </div>
             <div class="form-row">
               <label>备注</label>
@@ -151,6 +151,25 @@
         <button type="button" class="mp-year-arrow" id="mpYearNext" aria-label="下一年">›</button>
       </div>
       <div class="mp-month-grid" id="mpMonthGrid"></div>
+    </div>
+
+    <!-- 记账日期选择弹层（自定义紧凑日历，替代过大的系统日历） -->
+    <div class="mp-mask" id="dpMask" hidden></div>
+    <div class="mp-sheet" id="dpSheet" role="dialog" aria-modal="true" aria-label="选择日期" tabindex="-1" hidden>
+      <div class="mp-sheet-handle"></div>
+      <div class="mp-sheet-header">
+        <span class="mp-sheet-title">选择日期</span>
+        <button type="button" class="mp-today" id="dpToday">今天</button>
+      </div>
+      <div class="mp-year-row">
+        <button type="button" class="mp-year-arrow" id="dpPrev" aria-label="上个月">‹</button>
+        <span class="mp-year-label" id="dpLabel">2026年9月</span>
+        <button type="button" class="mp-year-arrow" id="dpNext" aria-label="下个月">›</button>
+      </div>
+      <div class="dp-week">
+        <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+      </div>
+      <div class="dp-grid" id="dpGrid"></div>
     </div>
   </div>
 

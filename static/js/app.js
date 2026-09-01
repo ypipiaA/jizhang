@@ -171,6 +171,66 @@ function closeSheet() {
   }, 250);
 }
 
+/* ---------- 自定义记账日期选择器（紧凑日历，替代系统日历弹窗） ---------- */
+let dpYear, dpMonth, dpCloseTimer = null;
+
+function renderDp() {
+  $("#dpLabel").textContent = `${dpYear}年${dpMonth}月`;
+  const sel = $("#recordDate").value;
+  const todayStr = localDateStr();
+  const firstWeekday = new Date(dpYear, dpMonth - 1, 1).getDay(); // 0=周日
+  const days = new Date(dpYear, dpMonth, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push('<span class="dp-cell blank"></span>');
+  for (let d = 1; d <= days; d++) {
+    const val = `${dpYear}-${String(dpMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const cls = ["dp-cell"];
+    if (val === sel) cls.push("active");
+    else if (val === todayStr) cls.push("now");
+    cells.push(`<button type="button" class="${cls.join(" ")}" data-val="${val}">${d}</button>`);
+  }
+  const grid = $("#dpGrid");
+  grid.innerHTML = cells.join("");
+  grid.querySelectorAll("button.dp-cell").forEach((b) => {
+    b.addEventListener("click", () => {
+      $("#recordDate").value = b.dataset.val;
+      closeDp();
+    });
+  });
+}
+
+function stepDpMonth(delta) {
+  dpMonth += delta;
+  if (dpMonth < 1) { dpMonth = 12; dpYear--; }
+  if (dpMonth > 12) { dpMonth = 1; dpYear++; }
+  renderDp();
+}
+
+function openDp() {
+  clearTimeout(dpCloseTimer);
+  const [y, m] = ($("#recordDate").value || localDateStr()).split("-").map(Number);
+  dpYear = y;
+  dpMonth = m;
+  renderDp();
+  $("#dpMask").hidden = false;
+  $("#dpSheet").hidden = false;
+  void $("#dpSheet").offsetHeight;
+  $("#dpMask").classList.add("show");
+  $("#dpSheet").classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+function closeDp() {
+  $("#dpMask").classList.remove("show");
+  $("#dpSheet").classList.remove("show");
+  document.body.style.overflow = "";
+  clearTimeout(dpCloseTimer);
+  dpCloseTimer = setTimeout(() => {
+    $("#dpMask").hidden = true;
+    $("#dpSheet").hidden = true;
+  }, 250);
+}
+
 function initDateFilters() {
   renderPickerLabel();
   $("#mpPrev").addEventListener("click", () => stepMonth(-1));
@@ -185,11 +245,21 @@ function initDateFilters() {
     closeSheet();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("#mpSheet").hidden) closeSheet();
+    if (e.key !== "Escape") return;
+    if (!$("#mpSheet").hidden) closeSheet();
+    if (!$("#dpSheet").hidden) closeDp();
   });
 
-  // 记账日期：默认今天
+  // 记账日期：默认今天；点击弹出自定义紧凑日历
   $("#recordDate").value = localDateStr();
+  $("#recordDate").addEventListener("click", openDp);
+  $("#dpMask").addEventListener("click", closeDp);
+  $("#dpPrev").addEventListener("click", () => stepDpMonth(-1));
+  $("#dpNext").addEventListener("click", () => stepDpMonth(1));
+  $("#dpToday").addEventListener("click", () => {
+    $("#recordDate").value = localDateStr();
+    closeDp();
+  });
 
   // 跨天检测：页面挂过夜后回到前台时，刷新“今天”相关状态
   let lastKnownToday = localDateStr();
