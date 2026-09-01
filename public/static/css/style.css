@@ -398,6 +398,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 12px;
 }
 
@@ -669,7 +671,8 @@ body {
   background: var(--primary-light);
 }
 
-.btn-delete {
+.btn-delete,
+.btn-edit {
   border: none;
   background: transparent;
   color: #ccc;
@@ -681,6 +684,14 @@ body {
   line-height: 1;
   transition: color 0.2s;
   -webkit-tap-highlight-color: transparent;
+}
+
+.btn-edit { font-size: 15px; }
+
+.btn-edit:active { color: var(--primary); }
+
+@media (hover: hover) {
+  .btn-edit:hover { color: var(--primary); }
 }
 
 @media (hover: hover) {
@@ -815,6 +826,9 @@ body {
   .category-grid { grid-template-columns: repeat(4, 1fr); }
 
   .amount-input-wrap input { font-size: 32px; width: 150px; }
+
+  /* 账单行右侧两个按钮收窄一点，给备注留空间 */
+  .btn-delete, .btn-edit { min-width: 36px; }
 
   .chart-grid { grid-template-columns: 1fr; }
 

@@ -357,6 +357,21 @@ async function api(url, opts = {}) {
     return { ok: true };
   }
 
+  if (del && method === "PATCH") {
+    // 修改备注
+    try {
+      const d = JSON.parse(opts.body);
+      const recs = dbAll();
+      const rec = recs.find((r) => r.id === +del[1]);
+      if (!rec) return { ok: false, error: "记录不存在" };
+      if ("note" in d) rec.note = String(d.note).trim();
+      dbWrite(recs);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "保存失败" };
+    }
+  }
+
   if (path === "/api/records") {
     const y = +p.get("year"), m = +p.get("month"), t = p.get("type");
     return dbAll()
@@ -567,6 +582,8 @@ async function loadSummary() {
   $("#sumExpense").textContent = fmt(s.expense);
 }
 
+let sortAsc = false; // 账单排序：false=最新在前（默认），true=最早在前
+
 async function loadRecords() {
   const g = ++gens.records;
   const y = getFilterYear(), m = getFilterMonth();
@@ -575,6 +592,7 @@ async function loadRecords() {
   if (type) url += `&type=${type}`;
   const records = await api(url);
   if (g !== gens.records) return;
+  if (sortAsc) records.reverse(); // 接口默认日期倒序，反转即为正序
   const list = $("#recordList");
 
   if (!records.length) {
@@ -594,6 +612,7 @@ async function loadRecords() {
           <div class="meta">${esc(r.record_date)}${r.note ? " · " + esc(r.note) : ""}</div>
         </div>
         <span class="record-amount ${r.type}">${prefix}${fmt(r.amount).replace("¥", "")}</span>
+        <button class="btn-edit" data-id="${r.id}" data-note="${esc(r.note || "")}" title="编辑备注">✎</button>
         <button class="btn-delete" data-id="${r.id}" title="删除">×</button>
       </div>`;
   }).join("");
@@ -604,6 +623,23 @@ async function loadRecords() {
       await api(`/api/records/${btn.dataset.id}`, { method: "DELETE" });
       showToast("已删除");
       refreshAll();
+    });
+  });
+
+  list.querySelectorAll(".btn-edit").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const next = prompt("修改备注", btn.dataset.note || "");
+      if (next === null || next === btn.dataset.note) return;
+      const res = await api(`/api/records/${btn.dataset.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ note: next }),
+      });
+      if (res && res.ok) {
+        showToast("备注已更新 ✓");
+        refreshAll();
+      } else {
+        showToast(res?.error || "保存失败");
+      }
     });
   });
 }
@@ -830,6 +866,11 @@ function setupForm() {
 
 function setupFilters() {
   $("#filterType").addEventListener("change", loadRecords);
+  $("#btnSort").addEventListener("click", () => {
+    sortAsc = !sortAsc;
+    $("#btnSort").textContent = sortAsc ? "日期↑" : "日期↓";
+    loadRecords();
+  });
 }
 
 async function init() {
