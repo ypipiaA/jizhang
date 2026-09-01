@@ -23,7 +23,13 @@
   padding: 0;
 }
 
+html {
+  /* 只允许上下左右平移滑动，禁止双指缩放/双击放大 */
+  touch-action: pan-x pan-y;
+}
+
 body {
+  touch-action: pan-x pan-y;
   font-family: "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
   background: linear-gradient(160deg, #fff5f0 0%, #f5f0eb 40%, #eef4f8 100%);
   color: var(--text);
@@ -96,24 +102,14 @@ body {
 .mp-arrow:disabled { opacity: 0.3; cursor: default; }
 
 .mp-label {
-  border: none;
-  background: transparent;
+  display: inline-block;
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
   padding: 8px 6px;
   min-width: 96px;
-  cursor: pointer;
-  border-radius: 999px;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.mp-label::after {
-  content: "▾";
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-left: 4px;
+  text-align: center;
 }
 
 /* 月份选择弹层 */

@@ -157,7 +157,6 @@ function openSheet() {
   $("#mpMask").classList.add("show");
   $("#mpSheet").classList.add("show");
   document.body.style.overflow = "hidden"; // 锁定背景滚动
-  $("#mpLabel").setAttribute("aria-expanded", "true");
   $("#mpSheet").focus();
 }
 
@@ -165,20 +164,17 @@ function closeSheet() {
   $("#mpMask").classList.remove("show");
   $("#mpSheet").classList.remove("show");
   document.body.style.overflow = "";
-  $("#mpLabel").setAttribute("aria-expanded", "false");
   clearTimeout(closeTimer);
   closeTimer = setTimeout(() => {
     $("#mpMask").hidden = true;
     $("#mpSheet").hidden = true;
   }, 250);
-  $("#mpLabel").focus(); // 焦点还给触发按钮
 }
 
 function initDateFilters() {
   renderPickerLabel();
   $("#mpPrev").addEventListener("click", () => stepMonth(-1));
   $("#mpNext").addEventListener("click", () => stepMonth(1));
-  $("#mpLabel").addEventListener("click", openSheet);
   $("#mpMask").addEventListener("click", closeSheet);
   $("#mpYearPrev").addEventListener("click", () => { sheetYear = Math.max(minYear(), sheetYear - 1); renderSheet(); });
   $("#mpYearNext").addEventListener("click", () => { sheetYear = Math.min(maxYear(), sheetYear + 1); renderSheet(); });
