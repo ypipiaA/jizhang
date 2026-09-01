@@ -1,12 +1,12 @@
-// 分类图标（与数据库分类一一对应；医疗/教育已合并进“其他支出”）
+// 分类图标（与本地分类一一对应；餐饮/交通/购物/娱乐已合并进“其他支出”）
 const CATEGORY_ICONS = {
-  "餐饮": "🍽️", "交通": "🚌", "购物": "🛍️", "娱乐": "🎮",
   "住房": "🏠", "其他支出": "📝",
   "工资": "💼", "奖金": "🎉", "理财": "📈", "其他收入": "💰",
 };
 
 // 按备注关键词精细匹配图标，让账单里每笔消费都有对应的图标
 const NOTE_ICONS = [
+  ["美团", "🦘"], ["抖音", "🎵"],
   ["外卖", "🛵"], ["早餐", "🥐"], ["午餐", "🍱"], ["晚餐", "🍲"], ["夜宵", "🌙"],
   ["奶茶", "🧋"], ["咖啡", "☕"], ["水果", "🍎"], ["零食", "🍿"], ["聚餐", "🍻"],
   ["打车", "🚕"], ["出租", "🚕"], ["地铁", "🚇"], ["公交", "🚌"], ["高铁", "🚄"],
@@ -29,12 +29,11 @@ function iconForRecord(categoryName, note) {
   return CATEGORY_ICONS[categoryName] || "📌";
 }
 
-// 常用消费捷径：渲染在分类网格“餐饮”一行，点一下选中对应分类并填好备注（金额自己输）
+// 常用消费捷径：渲染在分类网格最前面，点一下自动填好备注（金额自己输），归入“其他支出”
 const PRESET_ITEMS = [
-  { name: "外卖", icon: "🛵", category: "餐饮" },
-  { name: "打车", icon: "🚕", category: "交通" },
-  { name: "超市", icon: "🛒", category: "购物" },
-  { name: "电影", icon: "🎬", category: "娱乐" },
+  { name: "外卖", icon: "🛵", category: "其他支出" },
+  { name: "美团", icon: "🦘", category: "其他支出" },
+  { name: "抖音", icon: "🎵", category: "其他支出" },
 ];
 
 const CHART_COLORS = [
@@ -284,10 +283,6 @@ function initDateFilters() {
  * api(url, opts) 保持原签名，内部直接读写本地数据。
  */
 const LOCAL_CATEGORIES = [
-  { id: 1, name: "餐饮", type: "expense" },
-  { id: 2, name: "交通", type: "expense" },
-  { id: 3, name: "购物", type: "expense" },
-  { id: 4, name: "娱乐", type: "expense" },
   { id: 5, name: "住房", type: "expense" },
   { id: 6, name: "其他支出", type: "expense" },
   { id: 7, name: "工资", type: "income" },
@@ -295,6 +290,20 @@ const LOCAL_CATEGORIES = [
   { id: 9, name: "理财", type: "income" },
   { id: 10, name: "其他收入", type: "income" },
 ];
+
+// 已删除的旧分类 id → 其他支出（1餐饮 2交通 3购物 4娱乐），历史记录自动归并
+const MERGED_TO_OTHER = { 1: 6, 2: 6, 3: 6, 4: 6 };
+
+function normalizeRecords(recs) {
+  let changed = false;
+  for (const r of recs) {
+    if (MERGED_TO_OTHER[r.category_id]) {
+      r.category_id = MERGED_TO_OTHER[r.category_id];
+      changed = true;
+    }
+  }
+  return changed;
+}
 const LS_RECORDS = "jz_records";
 
 function dbAll() {
@@ -484,6 +493,7 @@ function setupBackup() {
       const recs = Array.isArray(data) ? data : data.records;
       if (!Array.isArray(recs)) throw new Error("bad");
       const valid = recs.filter((r) => r && r.id && r.record_date && r.amount > 0);
+      normalizeRecords(valid); // 旧备份里的已删分类同样归并到“其他支出”
       if (!confirm(`备份包含 ${valid.length} 条记录，导入将替换当前全部数据，确定？`)) return;
       dbWrite(valid);
       showToast("导入成功 ✓");
@@ -525,6 +535,17 @@ function renderCategoryGrid() {
   const list = categories[currentType];
   const cells = [];
 
+  // 常用消费捷径排在最前面
+  if (currentType === "expense") {
+    PRESET_ITEMS.forEach((item, i) => {
+      cells.push(`
+        <button type="button" class="cat-btn preset${activePresetName === item.name ? " active" : ""}" data-preset="${i}">
+          <span class="icon">${item.icon}</span>
+          <span>${item.name}</span>
+        </button>
+      `);
+    });
+  }
   list.forEach((cat) => {
     const active = cat.id === selectedCategoryId && !activePresetName;
     cells.push(`
@@ -533,23 +554,14 @@ function renderCategoryGrid() {
         <span>${esc(cat.name)}</span>
       </button>
     `);
-    // 常用消费捷径紧跟“餐饮”排在同一行
-    if (currentType === "expense" && cat.name === "餐饮") {
-      PRESET_ITEMS.forEach((item, i) => {
-        cells.push(`
-          <button type="button" class="cat-btn preset${activePresetName === item.name ? " active" : ""}" data-preset="${i}">
-            <span class="icon">${item.icon}</span>
-            <span>${item.name}</span>
-          </button>
-        `);
-      });
-    }
   });
   grid.innerHTML = cells.join("");
 
   if (!selectedCategoryId && list.length) {
-    selectedCategoryId = list[0].id;
-    grid.querySelector(".cat-btn")?.classList.add("active");
+    // 默认选“其他支出/其他收入”这类兜底分类
+    const other = list.find((c) => c.name.startsWith("其他"));
+    selectedCategoryId = (other || list[0]).id;
+    grid.querySelector(`.cat-btn[data-id="${selectedCategoryId}"]`)?.classList.add("active");
   }
 
   grid.querySelectorAll(".cat-btn").forEach((btn) => {
@@ -881,6 +893,11 @@ async function init() {
   setupFilters();
   setupBackup();
   await migrateFromServer(); // 老版本 app.py 的数据一次性搬进本地
+  {
+    // 旧分类（餐饮/交通/购物/娱乐）的历史记录自动归并到“其他支出”
+    const recs = dbAll();
+    if (normalizeRecords(recs)) dbWrite(recs);
+  }
   await loadCategories();
   await refreshAll();
 
