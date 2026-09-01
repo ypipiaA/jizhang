@@ -686,6 +686,7 @@ function renderExpensePie(breakdown) {
     });
     return;
   }
+  const total = breakdown.reduce((s, d) => s + d.total, 0);
   charts.pie = new Chart(ctx, {
     type: "doughnut",
     data: {
@@ -700,7 +701,7 @@ function renderExpensePie(breakdown) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: "55%",
+      cutout: "62%",
       plugins: {
         legend: { position: "right", labels: { boxWidth: 12, font: { size: 11 } } },
         tooltip: {
@@ -710,6 +711,26 @@ function renderExpensePie(breakdown) {
         },
       },
     },
+    plugins: [{
+      // 圆环中央显示总支出金额
+      id: "centerTotal",
+      afterDraw(chart) {
+        const { ctx: c, chartArea } = chart;
+        if (!chartArea) return;
+        const x = (chartArea.left + chartArea.right) / 2;
+        const y = (chartArea.top + chartArea.bottom) / 2;
+        c.save();
+        c.textAlign = "center";
+        c.textBaseline = "middle";
+        c.font = "12px 'Noto Sans SC', sans-serif";
+        c.fillStyle = "#8a8a8a";
+        c.fillText("总支出", x, y - 14);
+        c.font = "700 17px 'Noto Sans SC', sans-serif";
+        c.fillStyle = "#e74c3c";
+        c.fillText(fmt(total), x, y + 8);
+        c.restore();
+      },
+    }],
   });
 }
 
