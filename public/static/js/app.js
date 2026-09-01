@@ -175,6 +175,7 @@ function initDateFilters() {
   renderPickerLabel();
   $("#mpPrev").addEventListener("click", () => stepMonth(-1));
   $("#mpNext").addEventListener("click", () => stepMonth(1));
+  $("#mpLabel").addEventListener("click", openSheet); // 点年月文字弹出全部月份
   $("#mpMask").addEventListener("click", closeSheet);
   $("#mpYearPrev").addEventListener("click", () => { sheetYear = Math.max(minYear(), sheetYear - 1); renderSheet(); });
   $("#mpYearNext").addEventListener("click", () => { sheetYear = Math.min(maxYear(), sheetYear + 1); renderSheet(); });
