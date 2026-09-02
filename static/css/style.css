@@ -512,6 +512,19 @@ body {
 
 .cat-btn .icon { font-size: 20px; }
 
+/* SVG 图标（美团/抖音）与 emoji 同尺寸对齐 */
+.cat-btn .icon-img {
+  width: 24px;
+  height: 24px;
+  display: block;
+  margin: 0 auto;
+}
+
+.record-icon .icon-img {
+  width: 24px;
+  height: 24px;
+}
+
 .cat-btn.active {
   border-color: var(--primary);
   background: var(--primary-light);
@@ -727,6 +740,45 @@ body {
 .chart-card.wide .chart-wrap {
   height: 280px;
 }
+
+/* 每日消费总额（月历网格） */
+.card-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.daily-totals {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.dt-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 7px 2px;
+  min-width: 0;
+}
+
+.dt-cell .dt-day {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.dt-cell .dt-amt {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--expense);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.dt-cell.zero { background: transparent; }
+.dt-cell.zero .dt-amt { color: #d5d5d5; font-weight: 400; }
 
 .top-list {
   list-style: none;

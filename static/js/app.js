@@ -4,9 +4,17 @@ const CATEGORY_ICONS = {
   "工资": "💼", "奖金": "🎉", "理财": "📈", "其他收入": "💰",
 };
 
+// 美团（黄袋鼠）/ 抖省省（粉底"抖"字）自绘图标，内嵌 SVG 不依赖网络
+const SVG_MEITUAN = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><ellipse cx='21' cy='12' rx='6' ry='11' fill='#FFD100' transform='rotate(-18 21 12)'/><ellipse cx='45' cy='13' rx='5' ry='10' fill='#FFD100' transform='rotate(16 45 13)'/><path d='M32 9c14 0 22 12 22 26 0 15-10 23-22 23S10 50 10 35C10 21 18 9 32 9z' fill='#FFD100'/><ellipse cx='30' cy='45' rx='12' ry='10' fill='#FFF4B8'/><circle cx='25' cy='27' r='3.2' fill='#4a2c00'/><circle cx='38' cy='27' r='3.2' fill='#4a2c00'/><ellipse cx='31' cy='35' rx='6.5' ry='5' fill='#8a4b00'/></svg>`;
+const SVG_DOUYIN = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='4' y='4' width='56' height='56' rx='15' fill='#fe3b5f'/><path d='M14 14l6 3M17 11l4 5' stroke='#fff' stroke-width='2.5' stroke-linecap='round'/><text x='33' y='45' font-size='31' font-weight='700' text-anchor='middle' fill='#fff' font-family='sans-serif'>抖</text></svg>`;
+const ICON_MEITUAN = "data:image/svg+xml," + encodeURIComponent(SVG_MEITUAN);
+const ICON_DOUYIN = "data:image/svg+xml," + encodeURIComponent(SVG_DOUYIN);
+const IMG_MEITUAN = `<img class="icon-img" src="${ICON_MEITUAN}" alt="美团">`;
+const IMG_DOUYIN = `<img class="icon-img" src="${ICON_DOUYIN}" alt="抖音">`;
+
 // 按备注关键词精细匹配图标，让账单里每笔消费都有对应的图标
 const NOTE_ICONS = [
-  ["美团", "🦘"], ["抖音", "🎵"],
+  ["美团", IMG_MEITUAN], ["抖音", IMG_DOUYIN], ["抖省省", IMG_DOUYIN],
   ["外卖", "🛵"], ["早餐", "🥐"], ["午餐", "🍱"], ["晚餐", "🍲"], ["夜宵", "🌙"],
   ["奶茶", "🧋"], ["咖啡", "☕"], ["水果", "🍎"], ["零食", "🍿"], ["聚餐", "🍻"],
   ["打车", "🚕"], ["出租", "🚕"], ["地铁", "🚇"], ["公交", "🚌"], ["高铁", "🚄"],
@@ -32,8 +40,8 @@ function iconForRecord(categoryName, note) {
 // 常用消费捷径：渲染在分类网格最前面，点一下自动填好备注（金额自己输），归入“其他支出”
 const PRESET_ITEMS = [
   { name: "外卖", icon: "🛵", category: "其他支出" },
-  { name: "美团", icon: "🦘", category: "其他支出" },
-  { name: "抖音", icon: "🎵", category: "其他支出" },
+  { name: "美团", img: ICON_MEITUAN, category: "其他支出" },
+  { name: "抖音", img: ICON_DOUYIN, category: "其他支出" },
 ];
 
 const CHART_COLORS = [
@@ -352,8 +360,10 @@ async function api(url, opts = {}) {
         id, type: d.type, amount, category_id: +d.category_id,
         record_date: d.date, note: (d.note || "").trim(),
         created_at: new Date().toISOString(),
+        uid: newUid(), // 全局唯一标识，跨设备合并用
       });
       dbWrite(recs);
+      scheduleSync();
       return { ok: true, id };
     } catch {
       return { ok: false, error: "保存失败，本地存储可能已满" };
@@ -362,7 +372,11 @@ async function api(url, opts = {}) {
 
   const del = path.match(/^\/api\/records\/(\d+)$/);
   if (del && method === "DELETE") {
-    dbWrite(dbAll().filter((r) => r.id !== +del[1]));
+    const recs = dbAll();
+    const gone = recs.find((r) => r.id === +del[1]);
+    if (gone && gone.uid) addTombstone(gone.uid); // 记录删除墓碑，防止云端把它复活
+    dbWrite(recs.filter((r) => r.id !== +del[1]));
+    scheduleSync();
     return { ok: true };
   }
 
@@ -374,7 +388,9 @@ async function api(url, opts = {}) {
       const rec = recs.find((r) => r.id === +del[1]);
       if (!rec) return { ok: false, error: "记录不存在" };
       if ("note" in d) rec.note = String(d.note).trim();
+      rec.updated_at = new Date().toISOString(); // 冲突合并时新者胜
       dbWrite(recs);
+      scheduleSync();
       return { ok: true };
     } catch {
       return { ok: false, error: "保存失败" };
@@ -466,6 +482,140 @@ async function migrateFromServer() {
   }
 }
 
+/* ==================== 云同步（Cloudflare KV） ====================
+ * 口令 → SHA-256 → 云端存储键。两台设备输入相同口令即共享同一本账。
+ * 合并规则：按 uid 取并集；同 uid 两端都有时取修改时间新的；删除靠墓碑传播。
+ */
+const SYNC_ENDPOINT = "https://jizhang-d9k.pages.dev/api/sync";
+const LS_SYNC_PASS = "jz_sync_pass";
+const LS_TOMBSTONES = "jz_deleted";
+
+function newUid() {
+  return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+}
+
+async function sha256Hex(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function getTombstones() {
+  try {
+    const t = JSON.parse(localStorage.getItem(LS_TOMBSTONES));
+    return Array.isArray(t) ? t : [];
+  } catch { return []; }
+}
+
+function addTombstone(uid) {
+  try {
+    const t = getTombstones();
+    if (!t.includes(uid)) {
+      t.push(uid);
+      localStorage.setItem(LS_TOMBSTONES, JSON.stringify(t));
+    }
+  } catch {}
+}
+
+// 老记录没有 uid：补上（只生成一次并落盘，保证跨设备稳定）
+function ensureUids(recs) {
+  let changed = false;
+  for (const r of recs) {
+    if (!r.uid) { r.uid = newUid(); changed = true; }
+  }
+  return changed;
+}
+
+function mtime(r) { return r.updated_at || r.created_at || ""; }
+
+let syncTimer = null;
+let syncing = false;
+
+// 写库后 2 秒自动同步（已设口令时）
+function scheduleSync() {
+  if (!localStorage.getItem(LS_SYNC_PASS)) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncNow(true), 2000);
+}
+
+async function syncNow(silent) {
+  const pass = localStorage.getItem(LS_SYNC_PASS);
+  if (!pass || syncing) return;
+  syncing = true;
+  try {
+    const k = await sha256Hex(pass);
+    const local = dbAll();
+    if (ensureUids(local)) dbWrite(local);
+
+    // 1. 拉取云端
+    const res = await fetch(`${SYNC_ENDPOINT}?k=${k}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error || "HTTP " + res.status);
+    }
+    const cloud = await res.json();
+    const cloudRecs = cloud && Array.isArray(cloud.records) ? cloud.records : [];
+    const cloudTombs = cloud && Array.isArray(cloud.tombstones) ? cloud.tombstones : [];
+
+    // 2. 合并：墓碑并集 → 记录按 uid 并集（同 uid 取修改时间新的）→ 剔除已删除
+    const tombs = [...new Set([...getTombstones(), ...cloudTombs])];
+    const byUid = new Map();
+    for (const r of [...cloudRecs, ...local]) {
+      if (!r || !r.uid) continue;
+      const prev = byUid.get(r.uid);
+      if (!prev || mtime(r) > mtime(prev)) byUid.set(r.uid, r);
+    }
+    const merged = [...byUid.values()].filter((r) => !tombs.includes(r.uid));
+    merged.sort((a, b) =>
+      String(a.record_date).localeCompare(String(b.record_date)) ||
+      String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    merged.forEach((r, i) => { r.id = i + 1; }); // 本地 id 重排保持唯一
+    normalizeRecords(merged);
+
+    // 3. 写回本地 + 推送云端
+    dbWrite(merged);
+    localStorage.setItem(LS_TOMBSTONES, JSON.stringify(tombs));
+    const put = await fetch(`${SYNC_ENDPOINT}?k=${k}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        records: merged,
+        tombstones: tombs,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    if (!put.ok) throw new Error("上传失败");
+
+    if (!silent) showToast(`云同步完成 ✓ 共 ${merged.length} 条`);
+    refreshAll();
+  } catch (e) {
+    if (!silent) showToast("同步失败：" + (e.message || "网络不可达"));
+  } finally {
+    syncing = false;
+  }
+}
+
+function setupSync() {
+  $("#btnSync").addEventListener("click", async () => {
+    let pass = localStorage.getItem(LS_SYNC_PASS);
+    if (!pass) {
+      pass = prompt(
+        "首次使用云同步：设置一个同步口令（至少 4 位）。\n" +
+        "在手机/电脑输入相同口令，即可自动共享同一本账。\n" +
+        "口令请自己记好，不要用银行密码。");
+      if (pass === null) return;
+      pass = pass.trim();
+      if (pass.length < 4) return showToast("口令至少 4 个字符");
+      localStorage.setItem(LS_SYNC_PASS, pass);
+    }
+    showToast("同步中…");
+    await syncNow(false);
+  });
+  // 回到前台时静默同步一次，随时拉到另一台设备的新账
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) syncNow(true);
+  });
+}
+
 /* ---------- 备份：导出 / 导入 JSON（数据在本机，换设备用这个搬家） ---------- */
 function setupBackup() {
   $("#btnExport").addEventListener("click", () => {
@@ -538,9 +688,12 @@ function renderCategoryGrid() {
   // 常用消费捷径排在最前面
   if (currentType === "expense") {
     PRESET_ITEMS.forEach((item, i) => {
+      const iconHtml = item.img
+        ? `<img class="icon-img" src="${item.img}" alt="">`
+        : `<span class="icon">${item.icon}</span>`;
       cells.push(`
         <button type="button" class="cat-btn preset${activePresetName === item.name ? " active" : ""}" data-preset="${i}">
-          <span class="icon">${item.icon}</span>
+          ${iconHtml}
           <span>${item.name}</span>
         </button>
       `);
@@ -671,8 +824,20 @@ async function loadCharts() {
 
   renderExpensePie(data.expense_breakdown);
   renderDailyLine(data.daily_trend);
+  renderDailyTotals(data.daily_trend);
   renderMonthlyBar(data.monthly_trend);
   renderTopExpenses(data.top_expenses);
+}
+
+// 每日消费总额：整月一屏看全，有消费的日子高亮
+function renderDailyTotals(daily) {
+  const el = $("#dailyTotals");
+  el.innerHTML = daily.map((d) => `
+    <div class="dt-cell${d.expense > 0 ? "" : " zero"}">
+      <span class="dt-day">${d.day}日</span>
+      <span class="dt-amt">${d.expense > 0 ? fmt(d.expense).replace("¥", "") : "—"}</span>
+    </div>
+  `).join("");
 }
 
 function renderExpensePie(breakdown) {
@@ -703,12 +868,26 @@ function renderExpensePie(breakdown) {
       maintainAspectRatio: false,
       cutout: "62%",
       plugins: {
-        legend: { position: "right", labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => ` ${ctx.label}: ${fmt(ctx.raw)}`,
+        legend: {
+          position: "right",
+          onClick: () => {}, // 图例只展示，不响应点击
+          labels: {
+            boxWidth: 10,
+            font: { size: 11 },
+            // 图例右侧直接带上各分类金额
+            generateLabels(chart) {
+              const ds = chart.data.datasets[0];
+              return chart.data.labels.map((label, i) => ({
+                text: `${label}  ${fmt(ds.data[i])}`,
+                fillStyle: CHART_COLORS[i % CHART_COLORS.length],
+                strokeStyle: "#fff",
+                lineWidth: 2,
+                index: i,
+              }));
+            },
           },
         },
+        tooltip: { enabled: false }, // 点圆环不弹明细，中央只保留总支出
       },
     },
     plugins: [{
@@ -913,6 +1092,7 @@ async function init() {
   setupForm();
   setupFilters();
   setupBackup();
+  setupSync();
   await migrateFromServer(); // 老版本 app.py 的数据一次性搬进本地
   {
     // 旧分类（餐饮/交通/购物/娱乐）的历史记录自动归并到“其他支出”
@@ -923,9 +1103,11 @@ async function init() {
   await refreshAll();
 
   // 离线支持：注册 Service Worker 缓存页面外壳（数据本身就在本地，天然离线可用）
-  if ("serviceWorker" in navigator) {
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
+  // 已设同步口令则启动时静默同步
+  syncNow(true);
 }
 
 init();
