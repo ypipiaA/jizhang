@@ -31,8 +31,13 @@ const NOTE_ICONS = [
   ["红包", "🧧"], ["礼", "🎁"], ["宠物", "🐾"],
 ];
 
-// 根据单条记录选图标：先看备注关键词，再退回分类图标
-function iconForRecord(categoryName, note) {
+// 根据单条记录选图标：优先渠道（抖音/美团等），其次备注关键词，最后分类图标
+function iconForRecord(categoryName, note, channel) {
+  if (channel) {
+    for (const [kw, icon] of NOTE_ICONS) {
+      if (channel.includes(kw)) return icon;
+    }
+  }
   if (note) {
     for (const [kw, icon] of NOTE_ICONS) {
       if (note.includes(kw)) return icon;
@@ -365,6 +370,7 @@ async function api(url, opts = {}) {
       recs.push({
         id, type: d.type, amount, category_id: +d.category_id,
         record_date: d.date, note: (d.note || "").trim(),
+        channel: (d.channel || "").trim(), // 渠道：抖音/美团/拼多多/外卖/餐饮
         created_at: new Date().toISOString(),
         uid: newUid(), // 全局唯一标识，跨设备合并用
       });
@@ -455,6 +461,7 @@ async function api(url, opts = {}) {
       .slice(0, 5)
       .map((r) => ({
         amount: r.amount, note: r.note, record_date: r.record_date,
+        channel: r.channel || "",
         category_name: catById(r.category_id)?.name || "未知",
       }));
 
@@ -675,14 +682,13 @@ function findCategoryId(name, type = "expense") {
 
 let activePresetName = null; // 当前选中的快捷项（外卖/打车/超市/电影）
 
-// 快捷项：选中对应分类并填好备注，金额清零由用户输入
+// 快捷项：选中渠道，金额清零由用户输入；备注完全留给用户自己写
 function applyPreset(item) {
   const catId = findCategoryId(item.category);
   if (!catId) return showToast("分类未找到");
   selectedCategoryId = catId;
   activePresetName = item.name;
   $("#amount").value = ""; // 每次选择都从 0 开始，不保留上一次的数值
-  $("#note").value = item.name;
   renderCategoryGrid();
 }
 
@@ -732,9 +738,6 @@ function renderCategoryGrid() {
       selectedCategoryId = +btn.dataset.id;
       activePresetName = null;
       $("#amount").value = ""; // 切换消费项目时金额归零
-      // 备注同步为当前选中的项目，不残留旧备注；“其他支出/其他收入”留空让用户自己写
-      const n = btn.dataset.name;
-      $("#note").value = n.startsWith("其他") ? "" : n;
       grid.querySelectorAll(".cat-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
     });
@@ -773,13 +776,15 @@ async function loadRecords() {
 
   list.innerHTML = records.map((r) => {
     const isIncome = r.type === "income";
-    const icon = iconForRecord(r.category_name, r.note);
+    const icon = iconForRecord(r.category_name, r.note, r.channel);
+    // 选了渠道（抖音/美团等）就显示渠道名，不显示“其他支出”
+    const label = r.channel || r.category_name;
     const prefix = isIncome ? "+" : "-";
     return `
       <div class="record-item">
         <div class="record-icon ${r.type}">${icon}</div>
         <div class="record-info">
-          <div class="name">${esc(r.category_name)}</div>
+          <div class="name">${esc(label)}</div>
           <div class="meta">${esc(r.record_date)}${r.note ? " · " + esc(r.note) : ""}</div>
         </div>
         <span class="record-amount ${r.type}">${prefix}${fmt(r.amount).replace("¥", "")}</span>
@@ -1004,7 +1009,7 @@ function renderTopExpenses(top) {
       <div class="info">
         <span class="rank">${i + 1}</span>
         <div>
-          <div>${esc(item.category_name)}${item.note ? " · " + esc(item.note) : ""}</div>
+          <div>${esc(item.channel || item.category_name)}${item.note ? " · " + esc(item.note) : ""}</div>
           <div style="font-size:12px;color:#8a8a8a">${esc(item.record_date)}</div>
         </div>
       </div>
@@ -1058,6 +1063,7 @@ function setupForm() {
       category_id: selectedCategoryId,
       date: $("#recordDate").value,
       note: $("#note").value,
+      channel: activePresetName || "", // 选了抖音/美团等渠道就记在账单上
     };
     const res = await api("/api/records", {
       method: "POST",
