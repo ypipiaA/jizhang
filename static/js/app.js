@@ -266,7 +266,9 @@ function initDateFilters() {
     if (e.key !== "Escape") return;
     if (!$("#mpSheet").hidden) closeSheet();
     if (!$("#dpSheet").hidden) closeDp();
+    if (!$("#ddSheet").hidden) closeDayDetail();
   });
+  $("#ddMask").addEventListener("click", closeDayDetail);
 
   // 记账日期：默认今天；点击弹出自定义紧凑日历
   $("#recordDate").value = localDateStr();
@@ -435,7 +437,8 @@ async function api(url, opts = {}) {
     const byCat = {};
     for (const r of monthRecs) {
       if (r.type !== "expense") continue;
-      const n = catById(r.category_id)?.name || "未知";
+      // 优先按渠道（抖音/美团/外卖等）细分，无渠道的按分类归组
+      const n = r.channel || catById(r.category_id)?.name || "未知";
       byCat[n] = (byCat[n] || 0) + r.amount;
     }
     const expense_breakdown = Object.entries(byCat)
@@ -840,15 +843,73 @@ async function loadCharts() {
   renderTopExpenses(data.top_expenses);
 }
 
-// 每日消费总额：整月一屏看全，有消费的日子高亮
+// 每日消费总额：整月一屏看全，有消费的日子高亮，点击查看当天明细
 function renderDailyTotals(daily) {
   const el = $("#dailyTotals");
-  el.innerHTML = daily.map((d) => `
-    <div class="dt-cell${d.expense > 0 ? "" : " zero"}">
-      <span class="dt-day">${d.day}日</span>
-      <span class="dt-amt">${d.expense > 0 ? fmt(d.expense).replace("¥", "") : "—"}</span>
-    </div>
-  `).join("");
+  const y = getFilterYear(), m = getFilterMonth();
+  el.innerHTML = daily.map((d) => {
+    const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(d.day).padStart(2, "0")}`;
+    if (d.expense > 0) {
+      return `
+        <button type="button" class="dt-cell clickable" data-date="${dateStr}">
+          <span class="dt-day">${d.day}日</span>
+          <span class="dt-amt">${fmt(d.expense).replace("¥", "")}</span>
+        </button>`;
+    }
+    return `
+      <div class="dt-cell zero">
+        <span class="dt-day">${d.day}日</span>
+        <span class="dt-amt">—</span>
+      </div>`;
+  }).join("");
+
+  el.querySelectorAll(".dt-cell.clickable").forEach((btn) => {
+    btn.addEventListener("click", () => openDayDetail(btn.dataset.date));
+  });
+}
+
+/* ---------- 当日消费明细弹层 ---------- */
+let ddCloseTimer = null;
+
+async function openDayDetail(dateStr) {
+  clearTimeout(ddCloseTimer);
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const records = (await api(`/api/records?year=${y}&month=${m}`)) || [];
+  const dayRecs = records.filter((r) => r.record_date === dateStr && r.type === "expense");
+  const total = dayRecs.reduce((s, r) => s + r.amount, 0);
+
+  $("#ddTitle").textContent = `${m}月${d}日 消费明细`;
+  $("#ddTotal").textContent = `共 ${dayRecs.length} 笔 · ${fmt(total)}`;
+  $("#ddList").innerHTML = dayRecs.length
+    ? dayRecs.map((r) => `
+        <div class="record-item">
+          <div class="record-icon expense">${iconForRecord(r.category_name, r.note, r.channel)}</div>
+          <div class="record-info">
+            <div class="name">${esc(r.channel || r.category_name)}</div>
+            <div class="meta">${r.note ? esc(r.note) : ""}</div>
+          </div>
+          <span class="record-amount expense">-${fmt(r.amount).replace("¥", "")}</span>
+        </div>`).join("")
+    : '<p class="empty">当天没有消费记录</p>';
+
+  $("#ddMask").hidden = false;
+  $("#ddSheet").hidden = false;
+  void $("#ddSheet").offsetHeight;
+  $("#ddMask").classList.add("show");
+  $("#ddSheet").classList.add("show");
+  document.body.style.overflow = "hidden";
+  $("#ddSheet").focus();
+}
+
+function closeDayDetail() {
+  $("#ddMask").classList.remove("show");
+  $("#ddSheet").classList.remove("show");
+  document.body.style.overflow = "";
+  clearTimeout(ddCloseTimer);
+  ddCloseTimer = setTimeout(() => {
+    $("#ddMask").hidden = true;
+    $("#ddSheet").hidden = true;
+  }, 250);
 }
 
 function renderExpensePie(breakdown) {

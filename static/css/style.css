@@ -780,6 +780,38 @@ body {
 .dt-cell.zero { background: transparent; }
 .dt-cell.zero .dt-amt { color: #d5d5d5; font-weight: 400; }
 
+/* 有消费的日子可点击查看明细 */
+.dt-cell.clickable {
+  border: 1px solid var(--border);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dt-cell.clickable:active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  transform: scale(0.95);
+}
+
+@media (hover: hover) {
+  .dt-cell.clickable:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+  }
+}
+
+/* 当日明细弹层：合计徽标 */
+.dd-total {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--expense);
+  background: var(--expense-bg);
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
 .top-list {
   list-style: none;
 }

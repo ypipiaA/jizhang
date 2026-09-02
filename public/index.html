@@ -180,6 +180,17 @@
       </div>
       <div class="dp-grid" id="dpGrid"></div>
     </div>
+
+    <!-- 当日消费明细弹层 -->
+    <div class="mp-mask" id="ddMask" hidden></div>
+    <div class="mp-sheet" id="ddSheet" role="dialog" aria-modal="true" aria-label="当日消费明细" tabindex="-1" hidden>
+      <div class="mp-sheet-handle"></div>
+      <div class="mp-sheet-header">
+        <span class="mp-sheet-title" id="ddTitle">消费明细</span>
+        <span class="dd-total" id="ddTotal"></span>
+      </div>
+      <div class="record-list" id="ddList"></div>
+    </div>
   </div>
 
   <script src="/static/js/app.js"></script>
