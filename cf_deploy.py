@@ -61,10 +61,10 @@ def req(url, method="GET", data=None, token=None, headers=None, raw=False):
 
 
 def collect_files():
-    """返回 [(站点路径, 本地路径)]，站点路径以 / 开头。"""
+    """返回 [(站点路径, 本地路径)]，站点路径以 / 开头。_worker.js 不算静态资源。"""
     out = []
     for p in sorted(PUBLIC.rglob("*")):
-        if p.is_file():
+        if p.is_file() and p.name != "_worker.js":
             rel = "/" + p.relative_to(PUBLIC).as_posix()
             out.append((rel, p))
     return out
@@ -74,13 +74,19 @@ def content_hash(b64: str, ext: str) -> str:
     return hashlib.sha256((b64 + ext).encode()).hexdigest()[:32]
 
 
-def multipart(fields: dict) -> tuple[bytes, str]:
+def multipart(fields: dict, files: dict | None = None) -> tuple[bytes, str]:
+    """fields: 文本字段；files: {表单名: (文件名, bytes, Content-Type)}"""
     boundary = uuid.uuid4().hex
     buf = b""
     for name, value in fields.items():
         buf += f"--{boundary}\r\n".encode()
         buf += f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode()
         buf += value.encode() + b"\r\n"
+    for name, (fname, content, ftype) in (files or {}).items():
+        buf += f"--{boundary}\r\n".encode()
+        buf += f'Content-Disposition: form-data; name="{name}"; filename="{fname}"\r\n'.encode()
+        buf += f"Content-Type: {ftype}\r\n\r\n".encode()
+        buf += content + b"\r\n"
     buf += f"--{boundary}--\r\n".encode()
     return buf, f"multipart/form-data; boundary={boundary}"
 
@@ -120,8 +126,14 @@ def main():
         req(f"{BASE}/pages/assets/upload", "POST", todo, token=jwt)
         print("资源上传完成")
 
-    # 5. 创建部署
-    body, ctype = multipart({"manifest": json.dumps(manifest)})
+    # 5. 创建部署（附带 _worker.js 启用同步接口）
+    extra_files = {}
+    worker = PUBLIC / "_worker.js"
+    if worker.exists():
+        extra_files["_worker.js"] = ("_worker.js", worker.read_bytes(),
+                                     "application/javascript+module")
+        print("包含 _worker.js（云同步接口）")
+    body, ctype = multipart({"manifest": json.dumps(manifest)}, extra_files)
     res = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects/{PROJECT}/deployments",
               "POST", body, headers={"Content-Type": ctype}, raw=True)
     d = res["result"]
