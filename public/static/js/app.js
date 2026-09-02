@@ -4,9 +4,17 @@ const CATEGORY_ICONS = {
   "工资": "💼", "奖金": "🎉", "理财": "📈", "其他收入": "💰",
 };
 
+// 美团（黄袋鼠）/ 抖省省（粉底"抖"字）自绘图标，内嵌 SVG 不依赖网络
+const SVG_MEITUAN = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><ellipse cx='21' cy='12' rx='6' ry='11' fill='#FFD100' transform='rotate(-18 21 12)'/><ellipse cx='45' cy='13' rx='5' ry='10' fill='#FFD100' transform='rotate(16 45 13)'/><path d='M32 9c14 0 22 12 22 26 0 15-10 23-22 23S10 50 10 35C10 21 18 9 32 9z' fill='#FFD100'/><ellipse cx='30' cy='45' rx='12' ry='10' fill='#FFF4B8'/><circle cx='25' cy='27' r='3.2' fill='#4a2c00'/><circle cx='38' cy='27' r='3.2' fill='#4a2c00'/><ellipse cx='31' cy='35' rx='6.5' ry='5' fill='#8a4b00'/></svg>`;
+const SVG_DOUYIN = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='4' y='4' width='56' height='56' rx='15' fill='#fe3b5f'/><path d='M14 14l6 3M17 11l4 5' stroke='#fff' stroke-width='2.5' stroke-linecap='round'/><text x='33' y='45' font-size='31' font-weight='700' text-anchor='middle' fill='#fff' font-family='sans-serif'>抖</text></svg>`;
+const ICON_MEITUAN = "data:image/svg+xml," + encodeURIComponent(SVG_MEITUAN);
+const ICON_DOUYIN = "data:image/svg+xml," + encodeURIComponent(SVG_DOUYIN);
+const IMG_MEITUAN = `<img class="icon-img" src="${ICON_MEITUAN}" alt="美团">`;
+const IMG_DOUYIN = `<img class="icon-img" src="${ICON_DOUYIN}" alt="抖音">`;
+
 // 按备注关键词精细匹配图标，让账单里每笔消费都有对应的图标
 const NOTE_ICONS = [
-  ["美团", "🦘"], ["抖音", "🎵"],
+  ["美团", IMG_MEITUAN], ["抖音", IMG_DOUYIN], ["抖省省", IMG_DOUYIN],
   ["外卖", "🛵"], ["早餐", "🥐"], ["午餐", "🍱"], ["晚餐", "🍲"], ["夜宵", "🌙"],
   ["奶茶", "🧋"], ["咖啡", "☕"], ["水果", "🍎"], ["零食", "🍿"], ["聚餐", "🍻"],
   ["打车", "🚕"], ["出租", "🚕"], ["地铁", "🚇"], ["公交", "🚌"], ["高铁", "🚄"],
@@ -32,8 +40,8 @@ function iconForRecord(categoryName, note) {
 // 常用消费捷径：渲染在分类网格最前面，点一下自动填好备注（金额自己输），归入“其他支出”
 const PRESET_ITEMS = [
   { name: "外卖", icon: "🛵", category: "其他支出" },
-  { name: "美团", icon: "🦘", category: "其他支出" },
-  { name: "抖音", icon: "🎵", category: "其他支出" },
+  { name: "美团", img: ICON_MEITUAN, category: "其他支出" },
+  { name: "抖音", img: ICON_DOUYIN, category: "其他支出" },
 ];
 
 const CHART_COLORS = [
@@ -538,9 +546,12 @@ function renderCategoryGrid() {
   // 常用消费捷径排在最前面
   if (currentType === "expense") {
     PRESET_ITEMS.forEach((item, i) => {
+      const iconHtml = item.img
+        ? `<img class="icon-img" src="${item.img}" alt="">`
+        : `<span class="icon">${item.icon}</span>`;
       cells.push(`
         <button type="button" class="cat-btn preset${activePresetName === item.name ? " active" : ""}" data-preset="${i}">
-          <span class="icon">${item.icon}</span>
+          ${iconHtml}
           <span>${item.name}</span>
         </button>
       `);
@@ -671,8 +682,20 @@ async function loadCharts() {
 
   renderExpensePie(data.expense_breakdown);
   renderDailyLine(data.daily_trend);
+  renderDailyTotals(data.daily_trend);
   renderMonthlyBar(data.monthly_trend);
   renderTopExpenses(data.top_expenses);
+}
+
+// 每日消费总额：整月一屏看全，有消费的日子高亮
+function renderDailyTotals(daily) {
+  const el = $("#dailyTotals");
+  el.innerHTML = daily.map((d) => `
+    <div class="dt-cell${d.expense > 0 ? "" : " zero"}">
+      <span class="dt-day">${d.day}日</span>
+      <span class="dt-amt">${d.expense > 0 ? fmt(d.expense).replace("¥", "") : "—"}</span>
+    </div>
+  `).join("");
 }
 
 function renderExpensePie(breakdown) {
@@ -703,12 +726,26 @@ function renderExpensePie(breakdown) {
       maintainAspectRatio: false,
       cutout: "62%",
       plugins: {
-        legend: { position: "right", labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => ` ${ctx.label}: ${fmt(ctx.raw)}`,
+        legend: {
+          position: "right",
+          onClick: () => {}, // 图例只展示，不响应点击
+          labels: {
+            boxWidth: 10,
+            font: { size: 11 },
+            // 图例右侧直接带上各分类金额
+            generateLabels(chart) {
+              const ds = chart.data.datasets[0];
+              return chart.data.labels.map((label, i) => ({
+                text: `${label}  ${fmt(ds.data[i])}`,
+                fillStyle: CHART_COLORS[i % CHART_COLORS.length],
+                strokeStyle: "#fff",
+                lineWidth: 2,
+                index: i,
+              }));
+            },
           },
         },
+        tooltip: { enabled: false }, // 点圆环不弹明细，中央只保留总支出
       },
     },
     plugins: [{
