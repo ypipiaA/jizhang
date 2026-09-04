@@ -95,11 +95,11 @@
               <select id="filterChannel" class="filter-select" title="按平台筛选">
                 <option value="">全部平台</option>
               </select>
-              <select id="filterType" class="filter-select">
-                <option value="">全部</option>
-                <option value="expense">支出</option>
-                <option value="income">收入</option>
-              </select>
+              <div class="seg" id="typeSeg" role="group" aria-label="类型筛选">
+                <button type="button" class="seg-btn active" data-type="">全部</button>
+                <button type="button" class="seg-btn" data-type="expense">支出</button>
+                <button type="button" class="seg-btn" data-type="income">收入</button>
+              </div>
             </div>
           </div>
           <div class="record-list" id="recordList">
@@ -198,6 +198,18 @@
             <div class="st-desc" id="syncStatus">未开启 · 电脑手机共享同一本账</div>
           </div>
           <button type="button" class="btn-ghost" id="btnSync">☁ 立即同步</button>
+        </div>
+        <div class="st-row st-code" id="syncCodeRow" hidden>
+          <div class="st-info">
+            <div class="st-name">同步码</div>
+            <div class="st-desc">新设备打开应用 → 设置 → 开启同步，输入这个码即可接上同一本账</div>
+            <code class="sync-code" id="syncCodeText">••••••••</code>
+          </div>
+          <div class="st-btns st-btns-col">
+            <button type="button" class="btn-ghost" id="btnShowCode">显示</button>
+            <button type="button" class="btn-ghost" id="btnCopyCode">复制</button>
+            <button type="button" class="btn-ghost" id="btnChangeCode">更换</button>
+          </div>
         </div>
         <div class="st-row">
           <div class="st-info">

@@ -142,6 +142,60 @@ body {
   flex-shrink: 0;
 }
 
+.st-btns-col {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.st-btns-col .btn-ghost {
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.sync-code {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  word-break: break-all;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+/* 类型筛选按钮组（全部/支出/收入） */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--surface);
+}
+
+.seg-btn {
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 0 12px;
+  min-height: 38px;
+  border-radius: 6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: all 0.15s;
+}
+
+.seg-btn.active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
 /* 年月选择器（胶囊） */
 .month-picker {
   display: flex;

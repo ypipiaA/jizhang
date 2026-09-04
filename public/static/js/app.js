@@ -623,16 +623,72 @@ async function syncNow(silent) {
 /* ---------- 设置弹层（云同步 / 备份） ---------- */
 let stCloseTimer = null;
 
+let codeVisible = false;
+
 function renderSyncStatus() {
-  const on = !!localStorage.getItem(LS_SYNC_PASS);
+  const pass = localStorage.getItem(LS_SYNC_PASS);
+  const on = !!pass;
   $("#syncStatus").textContent = on
     ? "已开启 · 记账后自动同步，回到前台自动拉取"
     : "未开启 · 电脑手机共享同一本账";
   $("#btnSync").textContent = on ? "☁ 立即同步" : "☁ 开启同步";
+  $("#syncCodeRow").hidden = !on;
+  if (on) {
+    $("#syncCodeText").textContent = codeVisible ? pass : "•".repeat(Math.max(6, pass.length));
+    $("#btnShowCode").textContent = codeVisible ? "隐藏" : "显示";
+  }
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // 旧浏览器 / 非安全上下文兜底
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch {}
+    ta.remove();
+    return ok;
+  }
+}
+
+function setupSyncCode() {
+  $("#btnShowCode").addEventListener("click", () => {
+    codeVisible = !codeVisible;
+    renderSyncStatus();
+  });
+  $("#btnCopyCode").addEventListener("click", async () => {
+    const pass = localStorage.getItem(LS_SYNC_PASS);
+    if (!pass) return;
+    showToast((await copyText(pass)) ? "同步码已复制 ✓" : "复制失败，请点“显示”手动抄写");
+  });
+  $("#btnChangeCode").addEventListener("click", async () => {
+    const cur = localStorage.getItem(LS_SYNC_PASS) || "";
+    const next = prompt(
+      "输入新的同步码（至少 4 位）。\n" +
+      "· 想接上另一台设备的账本：输入那台设备的同步码\n" +
+      "· 本机数据会与该同步码下的云端数据合并，不会丢失", cur);
+    if (next === null) return;
+    const v = next.trim();
+    if (v.length < 4) return showToast("同步码至少 4 个字符");
+    if (v === cur) return;
+    localStorage.setItem(LS_SYNC_PASS, v);
+    codeVisible = false;
+    renderSyncStatus();
+    showToast("同步码已更换，正在合并…");
+    await syncNow(false);
+  });
 }
 
 function openSettings() {
   clearTimeout(stCloseTimer);
+  codeVisible = false; // 每次打开设置默认遮住同步码
   renderSyncStatus();
   $("#stMask").hidden = false;
   $("#stSheet").hidden = false;
@@ -811,11 +867,12 @@ async function loadSummary() {
 }
 
 let sortAsc = false; // 账单排序：false=最新在前（默认），true=最早在前
+let filterTypeValue = ""; // 类型筛选："" 全部 / expense / income
 
 async function loadRecords() {
   const g = ++gens.records;
   const y = getFilterYear(), m = getFilterMonth();
-  const type = $("#filterType").value;
+  const type = filterTypeValue;
   let url = `/api/records?year=${y}&month=${m}`;
   if (type) url += `&type=${type}`;
   let records = await api(url);
@@ -1226,10 +1283,15 @@ function setupForm() {
 }
 
 function setupFilters() {
-  $("#filterType").addEventListener("change", () => {
-    // 右侧选回“全部”时，左侧平台筛选同步回“全部平台”
-    if (!$("#filterType").value) $("#filterChannel").value = "";
-    loadRecords();
+  // 类型筛选用按钮组：每次点击都是真实事件（下拉框重选同一项不会触发 change）
+  $$("#typeSeg .seg-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      filterTypeValue = btn.dataset.type;
+      $$("#typeSeg .seg-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      // 点“全部”= 清除所有筛选，左侧平台同步回“全部平台”
+      if (!filterTypeValue) $("#filterChannel").value = "";
+      loadRecords();
+    });
   });
   $("#filterChannel").addEventListener("change", loadRecords);
   $("#btnSort").addEventListener("click", () => {
@@ -1248,6 +1310,7 @@ async function init() {
   setupBackup();
   setupSync();
   setupSettings();
+  setupSyncCode();
   await migrateFromServer(); // 老版本 app.py 的数据一次性搬进本地
   {
     // 旧分类（餐饮/交通/购物/娱乐）的历史记录自动归并到“其他支出”
