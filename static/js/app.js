@@ -1,7 +1,7 @@
 // 分类图标（与本地分类一一对应；餐饮/交通/购物/娱乐已合并进“其他支出”）
 const CATEGORY_ICONS = {
   "住房": "🏠", "其他支出": "📝",
-  "工资": "💼", "奖金": "🎉", "理财": "📈", "其他收入": "💰",
+  "工资": "💼", "奖金": "🎉", "其他收入": "💰",
 };
 
 // 美团（黄袋鼠）/ 抖省省（粉底"抖"字）自绘图标，内嵌 SVG 不依赖网络
@@ -318,12 +318,11 @@ const LOCAL_CATEGORIES = [
   { id: 6, name: "其他支出", type: "expense" },
   { id: 7, name: "工资", type: "income" },
   { id: 8, name: "奖金", type: "income" },
-  { id: 9, name: "理财", type: "income" },
   { id: 10, name: "其他收入", type: "income" },
 ];
 
-// 已删除的旧分类 id → 其他支出（1餐饮 2交通 3购物 4娱乐），历史记录自动归并
-const MERGED_TO_OTHER = { 1: 6, 2: 6, 3: 6, 4: 6 };
+// 已删除的旧分类 id → 兜底分类：1餐饮 2交通 3购物 4娱乐 → 其他支出(6)；9理财 → 其他收入(10)
+const MERGED_TO_OTHER = { 1: 6, 2: 6, 3: 6, 4: 6, 9: 10 };
 
 function normalizeRecords(recs) {
   let changed = false;
@@ -1178,6 +1177,7 @@ function renderMonthlyBar(monthly) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 18 } }, // 给柱顶金额留空间
       scales: {
         x: { grid: { display: false } },
         y: { beginAtZero: true },
@@ -1189,6 +1189,32 @@ function renderMonthlyBar(monthly) {
         },
       },
     },
+    plugins: [{
+      // 每根柱子顶部常驻显示金额，不用点击也能看到
+      id: "barValueLabels",
+      afterDatasetsDraw(chart) {
+        const { ctx: c } = chart;
+        const narrow = chart.width < 480;
+        c.save();
+        c.textAlign = "center";
+        c.textBaseline = "bottom";
+        c.font = `600 ${narrow ? 9 : 11}px 'Noto Sans SC', sans-serif`;
+        chart.data.datasets.forEach((ds, di) => {
+          const meta = chart.getDatasetMeta(di);
+          if (meta.hidden) return;
+          c.fillStyle = di === 0 ? "#27ae60" : "#c0392b";
+          meta.data.forEach((bar, i) => {
+            const v = ds.data[i];
+            if (!v) return; // 0 不标
+            const text = narrow
+              ? (v >= 10000 ? (v / 10000).toFixed(1) + "万" : Math.round(v).toLocaleString("zh-CN"))
+              : Math.round(v).toLocaleString("zh-CN");
+            c.fillText(text, bar.x, bar.y - 3);
+          });
+        });
+        c.restore();
+      },
+    }],
   });
 }
 
