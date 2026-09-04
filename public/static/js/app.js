@@ -8,17 +8,24 @@ const CATEGORY_ICONS = {
 const SVG_MEITUAN = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><ellipse cx='21' cy='12' rx='6' ry='11' fill='#FFD100' transform='rotate(-18 21 12)'/><ellipse cx='45' cy='13' rx='5' ry='10' fill='#FFD100' transform='rotate(16 45 13)'/><path d='M32 9c14 0 22 12 22 26 0 15-10 23-22 23S10 50 10 35C10 21 18 9 32 9z' fill='#FFD100'/><ellipse cx='30' cy='45' rx='12' ry='10' fill='#FFF4B8'/><circle cx='25' cy='27' r='3.2' fill='#4a2c00'/><circle cx='38' cy='27' r='3.2' fill='#4a2c00'/><ellipse cx='31' cy='35' rx='6.5' ry='5' fill='#8a4b00'/></svg>`;
 const SVG_DOUYIN = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='4' y='4' width='56' height='56' rx='15' fill='#fe3b5f'/><path d='M14 14l6 3M17 11l4 5' stroke='#fff' stroke-width='2.5' stroke-linecap='round'/><text x='33' y='45' font-size='31' font-weight='700' text-anchor='middle' fill='#fff' font-family='sans-serif'>抖</text></svg>`;
 const SVG_PDD = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='pdd' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#ff4141'/><stop offset='1' stop-color='#e8220f'/></linearGradient></defs><rect x='4' y='4' width='56' height='56' rx='15' fill='url(#pdd)'/><text x='32' y='45' font-size='31' font-weight='700' text-anchor='middle' fill='#fff' font-family='sans-serif'>拼</text></svg>`;
+const SVG_TAOBAO = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='tb' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#ff8f00'/><stop offset='1' stop-color='#ff5000'/></linearGradient></defs><rect x='4' y='4' width='56' height='56' rx='15' fill='url(#tb)'/><text x='32' y='45' font-size='31' font-weight='700' text-anchor='middle' fill='#fff' font-family='sans-serif'>淘</text></svg>`;
+const SVG_JD = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='jd' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#f22a1d'/><stop offset='1' stop-color='#c81623'/></linearGradient></defs><rect x='4' y='4' width='56' height='56' rx='15' fill='url(#jd)'/><text x='32' y='45' font-size='31' font-weight='700' text-anchor='middle' fill='#fff' font-family='sans-serif'>京</text></svg>`;
 const ICON_MEITUAN = "data:image/svg+xml," + encodeURIComponent(SVG_MEITUAN);
 const ICON_DOUYIN = "data:image/svg+xml," + encodeURIComponent(SVG_DOUYIN);
 const ICON_PDD = "data:image/svg+xml," + encodeURIComponent(SVG_PDD);
+const ICON_TAOBAO = "data:image/svg+xml," + encodeURIComponent(SVG_TAOBAO);
+const ICON_JD = "data:image/svg+xml," + encodeURIComponent(SVG_JD);
 const IMG_MEITUAN = `<img class="icon-img" src="${ICON_MEITUAN}" alt="美团">`;
 const IMG_DOUYIN = `<img class="icon-img" src="${ICON_DOUYIN}" alt="抖音">`;
 const IMG_PDD = `<img class="icon-img" src="${ICON_PDD}" alt="拼多多">`;
+const IMG_TAOBAO = `<img class="icon-img" src="${ICON_TAOBAO}" alt="淘宝">`;
+const IMG_JD = `<img class="icon-img" src="${ICON_JD}" alt="京东">`;
 
 // 按备注关键词精细匹配图标，让账单里每笔消费都有对应的图标
 const NOTE_ICONS = [
   ["美团", IMG_MEITUAN], ["抖音", IMG_DOUYIN], ["抖省省", IMG_DOUYIN],
-  ["拼多多", IMG_PDD], ["拼夕夕", IMG_PDD], ["餐饮", "🍽️"],
+  ["拼多多", IMG_PDD], ["拼夕夕", IMG_PDD], ["淘宝", IMG_TAOBAO],
+  ["京东", IMG_JD], ["餐饮", "🍽️"],
   ["外卖", "🛵"], ["早餐", "🥐"], ["午餐", "🍱"], ["晚餐", "🍲"], ["夜宵", "🌙"],
   ["奶茶", "🧋"], ["咖啡", "☕"], ["水果", "🍎"], ["零食", "🍿"], ["聚餐", "🍻"],
   ["打车", "🚕"], ["出租", "🚕"], ["地铁", "🚇"], ["公交", "🚌"], ["高铁", "🚄"],
@@ -51,6 +58,8 @@ const PRESET_ITEMS = [
   { name: "餐饮", icon: "🍽️", category: "其他支出" },
   { name: "外卖", icon: "🛵", category: "其他支出" },
   { name: "美团", img: ICON_MEITUAN, category: "其他支出" },
+  { name: "淘宝", img: ICON_TAOBAO, category: "其他支出" },
+  { name: "京东", img: ICON_JD, category: "其他支出" },
   { name: "抖音", img: ICON_DOUYIN, category: "其他支出" },
   { name: "拼多多", img: ICON_PDD, category: "其他支出" },
 ];
@@ -767,9 +776,19 @@ async function loadRecords() {
   const type = $("#filterType").value;
   let url = `/api/records?year=${y}&month=${m}`;
   if (type) url += `&type=${type}`;
-  const records = await api(url);
+  let records = await api(url);
   if (g !== gens.records) return;
   if (sortAsc) records.reverse(); // 接口默认日期倒序，反转即为正序
+
+  // 平台筛选：下拉选项按当月实际出现的平台动态生成
+  const chSel = $("#filterChannel");
+  const labels = [...new Set(records.map((r) => r.channel || r.category_name))];
+  const keep = chSel.value;
+  chSel.innerHTML = '<option value="">全部平台</option>' +
+    labels.map((l) => `<option value="${esc(l)}">${esc(l)}</option>`).join("");
+  if (labels.includes(keep)) chSel.value = keep; // 保持当前选择
+  if (chSel.value) records = records.filter((r) => (r.channel || r.category_name) === chSel.value);
+
   const list = $("#recordList");
 
   if (!records.length) {
@@ -868,6 +887,17 @@ function renderDailyTotals(daily) {
   });
 }
 
+// 查看某平台的消费明细：切到账单页并按平台筛选
+async function openPlatformDetail(name) {
+  document.querySelector('.tab[data-tab="records"]').click();
+  await loadRecords(); // 先生成平台选项
+  const sel = $("#filterChannel");
+  if ([...sel.options].some((o) => o.value === name)) {
+    sel.value = name;
+    await loadRecords();
+  }
+}
+
 /* ---------- 当日消费明细弹层 ---------- */
 let ddCloseTimer = null;
 
@@ -942,7 +972,11 @@ function renderExpensePie(breakdown) {
       plugins: {
         legend: {
           position: "right",
-          onClick: () => {}, // 图例只展示，不响应点击
+          // 点图例 → 跳到账单页查看该平台的消费明细
+          onClick: (e, item, legend) => {
+            const name = legend.chart.data.labels[item.index];
+            openPlatformDetail(name);
+          },
           labels: {
             boxWidth: 10,
             font: { size: 11 },
@@ -1151,6 +1185,7 @@ function setupForm() {
 
 function setupFilters() {
   $("#filterType").addEventListener("change", loadRecords);
+  $("#filterChannel").addEventListener("change", loadRecords);
   $("#btnSort").addEventListener("click", () => {
     sortAsc = !sortAsc;
     $("#btnSort").textContent = sortAsc ? "日期↑" : "日期↓";
