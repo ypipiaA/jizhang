@@ -25,10 +25,13 @@
           <p class="greeting" id="greeting">你好</p>
           <h1 class="title">生活记账</h1>
         </div>
-        <div class="month-picker" id="monthPicker">
-          <button type="button" class="mp-arrow" id="mpPrev" aria-label="上个月">‹</button>
-          <button type="button" class="mp-label" id="mpLabel" aria-haspopup="dialog">2026年8月</button>
-          <button type="button" class="mp-arrow" id="mpNext" aria-label="下个月">›</button>
+        <div class="header-actions">
+          <div class="month-picker" id="monthPicker">
+            <button type="button" class="mp-arrow" id="mpPrev" aria-label="上个月">‹</button>
+            <button type="button" class="mp-label" id="mpLabel" aria-haspopup="dialog">2026年8月</button>
+            <button type="button" class="mp-arrow" id="mpNext" aria-label="下个月">›</button>
+          </div>
+          <button type="button" class="btn-settings" id="btnSettings" aria-label="设置" aria-haspopup="dialog">⚙</button>
         </div>
       </div>
 
@@ -88,10 +91,6 @@
           <div class="card-header">
             <h2 class="card-title">账单明细</h2>
             <div class="bill-actions">
-              <button type="button" class="btn-ghost" id="btnSync" title="电脑手机数据云同步">☁ 同步</button>
-              <button type="button" class="btn-ghost" id="btnExport" title="导出全部数据为 JSON 备份">导出</button>
-              <button type="button" class="btn-ghost" id="btnImport" title="从 JSON 备份恢复数据">导入</button>
-              <input type="file" id="importFile" accept="application/json,.json" hidden>
               <button type="button" class="btn-ghost" id="btnSort" title="切换日期排序">日期↓</button>
               <select id="filterChannel" class="filter-select" title="按平台筛选">
                 <option value="">全部平台</option>
@@ -182,6 +181,36 @@
         <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
       </div>
       <div class="dp-grid" id="dpGrid"></div>
+    </div>
+
+    <!-- 设置弹层：云同步 / 备份 -->
+    <div class="mp-mask" id="stMask" hidden></div>
+    <div class="mp-sheet" id="stSheet" role="dialog" aria-modal="true" aria-label="设置" tabindex="-1" hidden>
+      <div class="mp-sheet-handle"></div>
+      <div class="mp-sheet-header">
+        <span class="mp-sheet-title">设置</span>
+        <button type="button" class="mp-today" id="stClose">完成</button>
+      </div>
+      <div class="st-group">
+        <div class="st-row">
+          <div class="st-info">
+            <div class="st-name">云同步</div>
+            <div class="st-desc" id="syncStatus">未开启 · 电脑手机共享同一本账</div>
+          </div>
+          <button type="button" class="btn-ghost" id="btnSync">☁ 立即同步</button>
+        </div>
+        <div class="st-row">
+          <div class="st-info">
+            <div class="st-name">数据备份</div>
+            <div class="st-desc">导出 JSON 文件保存，换设备或清缓存前用</div>
+          </div>
+          <div class="st-btns">
+            <button type="button" class="btn-ghost" id="btnExport">导出</button>
+            <button type="button" class="btn-ghost" id="btnImport">导入</button>
+            <input type="file" id="importFile" accept="application/json,.json" hidden>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 当日消费明细弹层 -->
