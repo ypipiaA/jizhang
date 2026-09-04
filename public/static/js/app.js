@@ -276,6 +276,7 @@ function initDateFilters() {
     if (!$("#mpSheet").hidden) closeSheet();
     if (!$("#dpSheet").hidden) closeDp();
     if (!$("#ddSheet").hidden) closeDayDetail();
+    if (!$("#stSheet").hidden) closeSettings();
   });
   $("#ddMask").addEventListener("click", closeDayDetail);
 
@@ -619,6 +620,46 @@ async function syncNow(silent) {
   }
 }
 
+/* ---------- 设置弹层（云同步 / 备份） ---------- */
+let stCloseTimer = null;
+
+function renderSyncStatus() {
+  const on = !!localStorage.getItem(LS_SYNC_PASS);
+  $("#syncStatus").textContent = on
+    ? "已开启 · 记账后自动同步，回到前台自动拉取"
+    : "未开启 · 电脑手机共享同一本账";
+  $("#btnSync").textContent = on ? "☁ 立即同步" : "☁ 开启同步";
+}
+
+function openSettings() {
+  clearTimeout(stCloseTimer);
+  renderSyncStatus();
+  $("#stMask").hidden = false;
+  $("#stSheet").hidden = false;
+  void $("#stSheet").offsetHeight;
+  $("#stMask").classList.add("show");
+  $("#stSheet").classList.add("show");
+  document.body.style.overflow = "hidden";
+  $("#stSheet").focus();
+}
+
+function closeSettings() {
+  $("#stMask").classList.remove("show");
+  $("#stSheet").classList.remove("show");
+  document.body.style.overflow = "";
+  clearTimeout(stCloseTimer);
+  stCloseTimer = setTimeout(() => {
+    $("#stMask").hidden = true;
+    $("#stSheet").hidden = true;
+  }, 250);
+}
+
+function setupSettings() {
+  $("#btnSettings").addEventListener("click", openSettings);
+  $("#stClose").addEventListener("click", closeSettings);
+  $("#stMask").addEventListener("click", closeSettings);
+}
+
 function setupSync() {
   $("#btnSync").addEventListener("click", async () => {
     let pass = localStorage.getItem(LS_SYNC_PASS);
@@ -631,6 +672,7 @@ function setupSync() {
       pass = pass.trim();
       if (pass.length < 4) return showToast("口令至少 4 个字符");
       localStorage.setItem(LS_SYNC_PASS, pass);
+      renderSyncStatus();
     }
     showToast("同步中…");
     await syncNow(false);
@@ -1184,7 +1226,11 @@ function setupForm() {
 }
 
 function setupFilters() {
-  $("#filterType").addEventListener("change", loadRecords);
+  $("#filterType").addEventListener("change", () => {
+    // 右侧选回“全部”时，左侧平台筛选同步回“全部平台”
+    if (!$("#filterType").value) $("#filterChannel").value = "";
+    loadRecords();
+  });
   $("#filterChannel").addEventListener("change", loadRecords);
   $("#btnSort").addEventListener("click", () => {
     sortAsc = !sortAsc;
@@ -1201,6 +1247,7 @@ async function init() {
   setupFilters();
   setupBackup();
   setupSync();
+  setupSettings();
   await migrateFromServer(); // 老版本 app.py 的数据一次性搬进本地
   {
     // 旧分类（餐饮/交通/购物/娱乐）的历史记录自动归并到“其他支出”
