@@ -56,13 +56,18 @@ function iconForRecord(categoryName, note, channel) {
 // 常用消费捷径：渲染在分类网格最前面，点一下自动填好备注（金额自己输），归入“其他支出”
 const PRESET_ITEMS = [
   { name: "餐饮", icon: "🍽️", category: "其他支出" },
-  { name: "外卖", icon: "🛵", category: "其他支出" },
-  { name: "美团", img: ICON_MEITUAN, category: "其他支出" },
-  { name: "淘宝", img: ICON_TAOBAO, category: "其他支出" },
-  { name: "京东", img: ICON_JD, category: "其他支出" },
-  { name: "抖音", img: ICON_DOUYIN, category: "其他支出" },
+  { name: "美团", img: ICON_MEITUAN, category: "其他支出", subs: ["外卖", "团购"] },
+  { name: "淘宝", img: ICON_TAOBAO, category: "其他支出", subs: ["外卖", "团购"] },
+  { name: "京东", img: ICON_JD, category: "其他支出", subs: ["外卖", "团购"] },
+  { name: "抖音", img: ICON_DOUYIN, category: "其他支出", subs: ["商城", "团购"] },
   { name: "拼多多", img: ICON_PDD, category: "其他支出" },
 ];
+
+// 一条记录在账单里的显示名：平台 + 子类型（如“美团·外卖”），无渠道则用分类名
+function recLabel(r) {
+  const base = r.channel || r.category_name || "";
+  return r.sub ? `${base}·${r.sub}` : base;
+}
 
 const CHART_COLORS = [
   "#ff6b4a", "#ffa94d", "#ffd43b", "#69db7c", "#38d9a9",
@@ -381,7 +386,8 @@ async function api(url, opts = {}) {
       recs.push({
         id, type: d.type, amount, category_id: +d.category_id,
         record_date: d.date, note: (d.note || "").trim(),
-        channel: (d.channel || "").trim(), // 渠道：抖音/美团/拼多多/外卖/餐饮
+        channel: (d.channel || "").trim(), // 渠道：抖音/美团/拼多多/餐饮
+        sub: (d.sub || "").trim(),         // 子类型：外卖/团购/商城
         created_at: new Date().toISOString(),
         uid: newUid(), // 全局唯一标识，跨设备合并用
       });
@@ -474,6 +480,7 @@ async function api(url, opts = {}) {
       .map((r) => ({
         amount: r.amount, note: r.note, record_date: r.record_date,
         channel: r.channel || "",
+        sub: r.sub || "",
         category_name: catById(r.category_id)?.name || "未知",
       }));
 
@@ -789,16 +796,39 @@ function findCategoryId(name, type = "expense") {
   return cat ? cat.id : categories[type][0]?.id;
 }
 
-let activePresetName = null; // 当前选中的快捷项（外卖/打车/超市/电影）
+let activePresetName = null; // 当前选中的平台（美团/淘宝/京东/抖音/拼多多/餐饮）
+let activeSub = null;        // 平台下的子类型（外卖/团购/商城）
 
 // 快捷项：选中渠道，金额清零由用户输入；备注完全留给用户自己写
 function applyPreset(item) {
   const catId = findCategoryId(item.category);
   if (!catId) return showToast("分类未找到");
   selectedCategoryId = catId;
+  if (activePresetName !== item.name) activeSub = null; // 换平台就重选子类型
   activePresetName = item.name;
   $("#amount").value = ""; // 每次选择都从 0 开始，不保留上一次的数值
   renderCategoryGrid();
+}
+
+// 平台子类型行：美团/淘宝/京东 → 外卖/团购；抖音 → 商城/团购
+function renderSubRow() {
+  const row = $("#subRow");
+  const item = PRESET_ITEMS.find((p) => p.name === activePresetName);
+  if (currentType !== "expense" || !item || !item.subs) {
+    row.hidden = true;
+    row.innerHTML = "";
+    return;
+  }
+  row.hidden = false;
+  row.innerHTML = `<span class="sub-label">${item.name}</span>` + item.subs.map((sname) => `
+    <button type="button" class="sub-btn${activeSub === sname ? " active" : ""}" data-sub="${sname}">${sname}</button>
+  `).join("");
+  row.querySelectorAll(".sub-btn").forEach((b) => {
+    b.addEventListener("click", () => {
+      activeSub = b.dataset.sub;
+      row.querySelectorAll(".sub-btn").forEach((x) => x.classList.toggle("active", x === b));
+    });
+  });
 }
 
 function renderCategoryGrid() {
@@ -837,6 +867,7 @@ function renderCategoryGrid() {
     selectedCategoryId = (other || list[0]).id;
     grid.querySelector(`.cat-btn[data-id="${selectedCategoryId}"]`)?.classList.add("active");
   }
+  renderSubRow();
 
   grid.querySelectorAll(".cat-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -846,9 +877,11 @@ function renderCategoryGrid() {
       }
       selectedCategoryId = +btn.dataset.id;
       activePresetName = null;
+      activeSub = null;
       $("#amount").value = ""; // 切换消费项目时金额归零
       grid.querySelectorAll(".cat-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
+      renderSubRow();
     });
   });
 }
@@ -898,7 +931,7 @@ async function loadRecords() {
     const isIncome = r.type === "income";
     const icon = iconForRecord(r.category_name, r.note, r.channel);
     // 选了渠道（抖音/美团等）就显示渠道名，不显示“其他支出”
-    const label = r.channel || r.category_name;
+    const label = recLabel(r);
     const prefix = isIncome ? "+" : "-";
     return `
       <div class="record-item">
@@ -964,7 +997,10 @@ async function loadCharts() {
 function renderDailyTotals(daily) {
   const el = $("#dailyTotals");
   const y = getFilterYear(), m = getFilterMonth();
-  el.innerHTML = daily.map((d) => {
+  // 周一为一周起点：1 号前补空格，让每一列对应固定星期
+  const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+  const blanks = Array.from({ length: lead }, () => '<div class="dt-cell blank"></div>').join("");
+  el.innerHTML = blanks + daily.map((d) => {
     const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(d.day).padStart(2, "0")}`;
     if (d.expense > 0) {
       return `
@@ -1013,7 +1049,7 @@ async function openDayDetail(dateStr) {
         <div class="record-item">
           <div class="record-icon expense">${iconForRecord(r.category_name, r.note, r.channel)}</div>
           <div class="record-info">
-            <div class="name">${esc(r.channel || r.category_name)}</div>
+            <div class="name">${esc(recLabel(r))}</div>
             <div class="meta">${r.note ? esc(r.note) : ""}</div>
           </div>
           <span class="record-amount expense">-${fmt(r.amount).replace("¥", "")}</span>
@@ -1229,7 +1265,7 @@ function renderTopExpenses(top) {
       <div class="info">
         <span class="rank">${i + 1}</span>
         <div>
-          <div>${esc(item.channel || item.category_name)}${item.note ? " · " + esc(item.note) : ""}</div>
+          <div>${esc(recLabel(item))}${item.note ? " · " + esc(item.note) : ""}</div>
           <div style="font-size:12px;color:#8a8a8a">${esc(item.record_date)}</div>
         </div>
       </div>
@@ -1264,6 +1300,7 @@ function setupForm() {
       currentType = btn.dataset.type;
       selectedCategoryId = null;
       activePresetName = null;
+      activeSub = null;
       $("#amount").value = ""; // 切换支出/收入时金额归零
       $$(".type-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
@@ -1284,6 +1321,7 @@ function setupForm() {
       date: $("#recordDate").value,
       note: $("#note").value,
       channel: activePresetName || "", // 选了抖音/美团等渠道就记在账单上
+      sub: activeSub || "",             // 平台子类型：外卖/团购/商城
     };
     const res = await api("/api/records", {
       method: "POST",
@@ -1295,6 +1333,7 @@ function setupForm() {
       $("#amount").value = "";
       $("#note").value = "";
       activePresetName = null;
+      activeSub = null;
       renderCategoryGrid();
     };
 
