@@ -493,6 +493,7 @@ async function api(url, opts = {}) {
 /* ---------- 一次性迁移：从旧的 app.py 服务器把历史账单搬进本地 ---------- */
 async function migrateFromServer() {
   if (localStorage.getItem(LS_RECORDS) !== null) return; // 已有本地数据，跳过
+  if (window.CountsAndroid) { dbWrite([]); return; }
   try {
     const res = await fetch("/api/records");
     const old = await res.json();
@@ -753,6 +754,12 @@ function setupBackup() {
       exported_at: new Date().toISOString(),
       records: dbAll(),
     };
+    if (window.CountsAndroid) {
+      // Android 的 WebView 不支持 blob 下载，交给系统“另存为”文件选择器。
+      window.CountsAndroid.exportBackup(
+        `记账备份-${localDateStr()}.json`, JSON.stringify(payload, null, 2));
+      return;
+    }
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1386,11 +1393,26 @@ async function init() {
   await refreshAll();
 
   // 离线支持：注册 Service Worker 缓存页面外壳（数据本身就在本地，天然离线可用）
-  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  if (!window.CountsAndroid && "serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
   // 已设同步口令则启动时静默同步
   syncNow(true);
 }
+
+// 安卓返回键先收起弹层，再回到记账页；首页由系统返回桌面。
+window.handleAndroidBack = function () {
+  for (const [id, close] of [
+    ["ddSheet", closeDayDetail], ["stSheet", closeSettings],
+    ["dpSheet", closeDp], ["mpSheet", closeSheet],
+  ]) {
+    if (!document.getElementById(id).hidden) { close(); return true; }
+  }
+  if (!$("#panel-add").classList.contains("active")) {
+    $('.tab[data-tab="add"]').click();
+    return true;
+  }
+  return false;
+};
 
 init();

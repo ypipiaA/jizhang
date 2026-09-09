@@ -17,3 +17,14 @@ deploy/
 dist/
 .chart.cache.js
 node_modules/
+
+# 安卓构建缓存和本机签名密钥（升级安装需要保留，勿提交）
+.android-build/
+.android-signing/
+android/app/src/main/assets/
+public/downloads/*.apk
+
+# 本机环境凭证
+.env
+.env.*
+!.env.example

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">生活记账</string>
+    <color name="icon_background">#FF6B4A</color>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#FF6B4A</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">#FFF5F0</item>
+        <item name="android:navigationBarColor">#F5F0EB</item>
+        <item name="android:windowBackground">#FFF5F0</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

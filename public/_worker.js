@@ -20,6 +20,39 @@ function json(obj, status = 200) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/downloads/") && url.pathname.endsWith(".apk")) {
+      const name = url.pathname.slice("/downloads/".length);
+      const missing = () => new Response("安装包文件不存在，请确认已发布对应版本。", {
+        status: 404,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+      if (!/^counts-\d+\.\d+\.\d+\.apk$/.test(name)) return missing();
+      if (!["GET", "HEAD"].includes(request.method)) {
+        return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
+      }
+      // Verify the asset bytes: SPA fallback can return the homepage with HTTP 200,
+      // even when a download-specific header has made its MIME type look like an APK.
+      const assetHeaders = new Headers(request.headers);
+      for (const header of ["Range", "If-None-Match", "If-Modified-Since", "Accept-Encoding"]) {
+        assetHeaders.delete(header);
+      }
+      const asset = await env.ASSETS.fetch(new Request(request, { method: "GET", headers: assetHeaders }));
+      if (!asset.ok) return missing();
+      const bytes = await asset.arrayBuffer();
+      const signature = new Uint8Array(bytes, 0, Math.min(4, bytes.byteLength));
+      if (signature.length !== 4 || ![0x50, 0x4b, 0x03, 0x04].every((v, i) => signature[i] === v)) {
+        return missing();
+      }
+      return new Response(request.method === "HEAD" ? null : bytes, {
+        headers: {
+          "Content-Type": "application/vnd.android.package-archive",
+          "Content-Disposition": `attachment; filename="${name}"`,
+          "Content-Length": String(bytes.byteLength),
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
     if (url.pathname === "/api/sync") {
       if (request.method === "OPTIONS") {
         return new Response(null, { headers: CORS });

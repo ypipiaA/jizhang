@@ -23,6 +23,9 @@
   padding: 0;
 }
 
+/* 自定义 flex/grid 布局不能覆盖 hidden，否则关闭的弹层仍会挡住手机页面。 */
+[hidden] { display: none !important; }
+
 html {
   /* 只允许上下左右平移滑动，禁止双指缩放/双击放大 */
   touch-action: pan-x pan-y;

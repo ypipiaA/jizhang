@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Central safe zone: a household ledger and pen stay legible in round masks. -->
+    <path android:fillColor="#D94F35" android:fillAlpha="0.26"
+        android:pathData="M39,31 H66 Q72,31 72,37 V75 Q72,81 66,81 H39 Q33,81 33,75 V37 Q33,31 39,31 Z" />
+    <path android:fillColor="#FFFCF5"
+        android:pathData="M38,28 H65 Q71,28 71,34 V73 Q71,79 65,79 H38 Q32,79 32,73 V34 Q32,28 38,28 Z" />
+    <path android:fillColor="#FFE4D7"
+        android:pathData="M38,28 H41 V79 H38 Q32,79 32,73 V34 Q32,28 38,28 Z" />
+    <path android:strokeColor="#D95036" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M31,39 H36 M31,51 H36 M31,63 H36" />
+    <path android:strokeColor="#F36746" android:strokeWidth="2.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M48,38 L54,45 L60,38 M48,46 H60 M48,52 H60 M54,45 V58" />
+    <path android:strokeColor="#E0C8B8" android:strokeWidth="2.5" android:strokeLineCap="round"
+        android:pathData="M47,65 H61 M47,71 H54" />
+    <path android:fillColor="#246D63"
+        android:pathData="M56,66 L73,46 Q75,44 77,46 L80,49 Q82,51 80,53 L62,73 L54,77 Z" />
+    <path android:fillColor="#70B5A1"
+        android:pathData="M59,68 L75,49 L77,51 L61,70 Z" />
+    <path android:fillColor="#FFD8B6"
+        android:pathData="M56,66 L62,73 L54,77 Z" />
+    <path android:fillColor="#284C43"
+        android:pathData="M55,72 L58,75 L54,77 Z" />
+    <path android:fillColor="#D0E8DB"
+        android:pathData="M71,49 L74,45 Q75,44 77,46 L80,49 Q82,51 80,53 L77,56 Z" />
+</vector>

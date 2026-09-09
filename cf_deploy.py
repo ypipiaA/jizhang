@@ -15,11 +15,13 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
-PROJECT = os.environ.get("CF_PROJECT", "jizhang")
-TOKEN = os.environ["CF_TOKEN"]
-ACCOUNT = os.environ["CF_ACC"]
+PROJECT = "jizhang"
+EXPECTED_HOST = "jizhang-d9k.pages.dev"
+REQUESTED_PROJECT = os.environ.get("CF_PROJECT", PROJECT)
+TOKEN = os.environ.get("CF_TOKEN", "")
+ACCOUNT = os.environ.get("CF_ACC", "")
 BASE = "https://api.cloudflare.com/client/v4"
 
 
@@ -91,7 +93,30 @@ def multipart(fields: dict, files: dict | None = None) -> tuple[bytes, str]:
     return buf, f"multipart/form-data; boundary={boundary}"
 
 
+def validate_target(project=None):
+    if REQUESTED_PROJECT != "jizhang" or PROJECT != "jizhang":
+        raise SystemExit("生活记账只能发布到 jizhang，禁止通过 CF_PROJECT 改成其他项目（包括 jiaban）")
+    if project is not None and (project.get("name") != "jizhang" or project.get("subdomain") != EXPECTED_HOST):
+        raise SystemExit("实际站点不是 jizhang-d9k.pages.dev，停止发布，未上传任何资源")
+
+
+def validate_release(public=PUBLIC):
+    required = ["index.html", "static/manifest.json", "static/js/app.js", "static/css/style.css", "_worker.js"]
+    if any(not (public / name).is_file() for name in required):
+        raise SystemExit("生活记账发布资源不完整，停止发布")
+    html = (public / "index.html").read_text(encoding="utf-8")
+    manifest = json.loads((public / "static/manifest.json").read_text(encoding="utf-8"))
+    if "<title>生活记账" not in html or manifest.get("name") != "生活记账":
+        raise SystemExit("首页或桌面入口不是生活记账，停止发布")
+
+
 def main():
+    validate_target()
+    validate_release()
+    if not TOKEN or not ACCOUNT:
+        raise SystemExit("请为生活记账配置 CF_TOKEN 和 CF_ACC；发布目标固定为 jizhang")
+    project = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects/{PROJECT}")["result"]
+    validate_target(project)
     files = collect_files()
     if not files:
         raise SystemExit("public/ 目录为空")
