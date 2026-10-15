@@ -38,9 +38,11 @@ const NOTE_ICONS = [
   ["红包", "🧧"], ["礼", "🎁"], ["宠物", "🐾"],
 ];
 
-// 根据单条记录选图标：优先渠道（抖音/美团等），其次备注关键词，最后分类图标
+// 根据单条记录选图标：优先渠道（自定义项目图标 / 抖音美团等），其次备注关键词，最后分类图标
 function iconForRecord(categoryName, note, channel) {
   if (channel) {
+    const item = itemByName(channel);
+    if (item && item.icon) return `<span class="icon">${esc(item.icon)}</span>`;
     for (const [kw, icon] of NOTE_ICONS) {
       if (channel.includes(kw)) return icon;
     }
@@ -53,22 +55,70 @@ function iconForRecord(categoryName, note, channel) {
   return CATEGORY_ICONS[categoryName] || "📌";
 }
 
-// 常用消费捷径：渲染在分类网格最前面，点一下自动填好备注（金额自己输），归入“其他支出”
-const PRESET_ITEMS = [
-  { name: "餐饮", icon: "🍽️", category: "其他支出" },
-  { name: "美团", img: ICON_MEITUAN, category: "其他支出", subs: ["外卖", "团购"] },
-  { name: "淘宝", img: ICON_TAOBAO, category: "其他支出", subs: ["外卖", "团购"] },
-  { name: "京东", img: ICON_JD, category: "其他支出", subs: ["外卖", "团购"] },
-  { name: "抖音", img: ICON_DOUYIN, category: "其他支出", subs: ["商城", "团购"] },
-  { name: "拼多多", img: ICON_PDD, category: "其他支出" },
+/* ---------- 记账项目（平台）：用户在“设置 → 管理项目”里自行增删、排序、设置子选项 ----------
+ * 存在 localStorage（jz_items = { list, at }），随云同步。全部归入“其他支出”。
+ * 内置平台没设自定义图标时使用自绘图标。 */
+const ITEM_CATEGORY = "其他支出";
+const BUILTIN_IMG = { "美团": ICON_MEITUAN, "淘宝": ICON_TAOBAO, "京东": ICON_JD, "抖音": ICON_DOUYIN, "拼多多": ICON_PDD };
+const DEFAULT_ITEMS = [
+  { name: "餐饮", icon: "🍽️", subs: [] },
+  { name: "美团", icon: "", subs: ["外卖", "团购"] },
+  { name: "淘宝", icon: "", subs: ["外卖", "团购"] },
+  { name: "京东", icon: "", subs: ["外卖", "团购"] },
+  { name: "抖音", icon: "", subs: ["商城", "团购"] },
+  { name: "拼多多", icon: "", subs: [] },
 ];
+const LS_ITEMS = "jz_items";
+let itemsCache = null;
 
-// 有子选项的平台（美团/淘宝/京东/抖音）必须选子类型，返回错误文案或 null
+function cleanItem(x) {
+  if (!x || typeof x.name !== "string" || !x.name.trim()) return null;
+  const subs = Array.isArray(x.subs) ? x.subs : [];
+  return {
+    name: x.name.trim().slice(0, 12),
+    icon: typeof x.icon === "string" ? x.icon.trim().slice(0, 8) : "",
+    subs: [...new Set(subs.map((v) => String(v).trim().slice(0, 8)).filter(Boolean))],
+  };
+}
+
+function getItems() {
+  if (itemsCache) return itemsCache;
+  let list = null;
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_ITEMS));
+    if (v && Array.isArray(v.list)) list = v.list.map(cleanItem).filter(Boolean);
+  } catch {}
+  itemsCache = list || DEFAULT_ITEMS.map(cleanItem);
+  return itemsCache;
+}
+
+function saveItems(list) {
+  localStorage.setItem(LS_ITEMS, JSON.stringify({ list: list.map(cleanItem).filter(Boolean), at: new Date().toISOString() }));
+  itemsCache = null;
+  scheduleSync();
+}
+
+function itemByName(name) {
+  return name ? getItems().find((x) => x.name === name) : undefined;
+}
+
+function itemIconHtml(item) {
+  const img = !item.icon && BUILTIN_IMG[item.name];
+  return img ? `<img class="icon-img" src="${img}" alt="">` : `<span class="icon">${esc(item.icon || "🏷️")}</span>`;
+}
+
+// 设了子选项的项目必须选子类型，返回错误文案或 null
 function subRequiredError(type, channel, sub) {
   if (type !== "expense" || !channel) return null;
-  const p = PRESET_ITEMS.find((x) => x.name === channel);
-  if (p && p.subs && !p.subs.includes(sub)) return `请先选择${p.name}的「${p.subs.join(" / ")}」`;
+  const p = itemByName(channel);
+  if (p && p.subs.length && !p.subs.includes(sub)) return `请先选择${p.name}的「${p.subs.join(" / ")}」`;
   return null;
+}
+
+// 金额：普通数字，保留两位小数
+function parseAmount(str) {
+  const n = parseFloat(String(str ?? "").trim());
+  return isNaN(n) ? NaN : Math.round(n * 100) / 100;
 }
 
 // 一条记录在账单里的显示名：平台 + 子类型（如“美团·外卖”），无渠道则用分类名
@@ -314,6 +364,8 @@ function initDateFilters() {
     if (!$("#dpSheet").hidden) closeDp();
     if (!$("#ddSheet").hidden) closeDayDetail();
     if (!$("#stSheet").hidden) closeSettings();
+    if (!$("#itSheet").hidden) closePanel("it");
+    if (!$("#rcSheet").hidden) closePanel("rc");
     if (!$("#edSheet").hidden && $("#dpSheet").hidden) closeEdit();
   });
   $("#ddMask").addEventListener("click", closeDayDetail);
@@ -481,8 +533,9 @@ async function api(url, opts = {}) {
 
   if (path === "/api/records") {
     const y = +p.get("year"), m = +p.get("month"), t = p.get("type");
+    const all = p.get("all") === "1"; // 跨月搜索：不限月份
     return dbAll()
-      .filter((r) => inMonth(r, y, m) && (!t || r.type === t))
+      .filter((r) => (all || inMonth(r, y, m)) && (!t || r.type === t))
       .sort((a, b) => String(b.record_date).localeCompare(String(a.record_date)) || b.id - a.id)
       .map((r) => ({ ...r, category_name: catById(r.category_id)?.name || "未知" }));
   }
@@ -588,6 +641,68 @@ function setBudget(amount) {
   scheduleSync();
 }
 const LS_TOMBSTONES = "jz_deleted";
+const LS_RECUR = "jz_recurring"; // { list: [{ id, name, amount, day, category_id, start: "YYYY-MM" }], at }
+const LS_THEME = "jz_theme";     // auto / light / dark（仅本机）
+const LS_FOLDS = "jz_folds";     // 统计页卡片折叠状态（仅本机）
+
+// 参与云同步的设置：[云端字段, 本地键, 校验]
+const SYNCED_SETTINGS = [
+  ["budget", LS_BUDGET, (v) => v && typeof v.amount === "number"],
+  ["items", LS_ITEMS, (v) => v && Array.isArray(v.list)],
+  ["recurring", LS_RECUR, (v) => v && Array.isArray(v.list)],
+];
+
+/* ---------- 固定账单：每月自动生成 ----------
+ * 每笔自动账单的 uid 固定为 recur-<规则id>-<年月>，多台设备各自生成也只会合并成一条；
+ * 用户删掉后 uid 进入删除墓碑，不会再补。 */
+function getRecurring() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_RECUR));
+    if (v && Array.isArray(v.list)) return v.list.filter((r) => r && r.id && r.amount > 0 && r.day >= 1);
+  } catch {}
+  return [];
+}
+
+function saveRecurring(list) {
+  localStorage.setItem(LS_RECUR, JSON.stringify({ list, at: new Date().toISOString() }));
+  scheduleSync();
+}
+
+function generateRecurring() {
+  const rules = getRecurring();
+  if (!rules.length) return 0;
+  const recs = dbAll();
+  const have = new Set(recs.map((r) => r.uid));
+  const tombs = new Set(getTombstones());
+  const todayStr = localDateStr();
+  const now = new Date();
+  let nextId = recs.length ? Math.max(...recs.map((r) => r.id)) + 1 : 1;
+  let added = 0;
+  for (const rule of rules) {
+    let [y, m] = String(rule.start || todayStr.slice(0, 7)).split("-").map(Number);
+    if (!y || !m) continue;
+    // 最多补 24 个月，防止异常数据生成过多
+    for (let guard = 0; guard < 24; guard++) {
+      if (y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth() + 1)) break;
+      const day = Math.min(rule.day, new Date(y, m, 0).getDate());
+      const date = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const uid = `recur-${rule.id}-${y}${String(m).padStart(2, "0")}`;
+      if (date <= todayStr && !have.has(uid) && !tombs.has(uid) && catById(rule.category_id)) {
+        recs.push({
+          id: nextId++, type: "expense", amount: rule.amount, category_id: rule.category_id,
+          record_date: date, note: "每月固定", channel: rule.name, sub: "",
+          created_at: new Date().toISOString(), uid,
+        });
+        have.add(uid);
+        added++;
+      }
+      m++;
+      if (m > 12) { m = 1; y++; }
+    }
+  }
+  if (added) dbWrite(recs);
+  return added;
+}
 
 function newUid() {
   return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
@@ -655,14 +770,20 @@ async function syncNow(silent) {
     const cloudRecs = cloud && Array.isArray(cloud.records) ? cloud.records : [];
     const cloudTombs = cloud && Array.isArray(cloud.tombstones) ? cloud.tombstones : [];
 
-    // 预算设置：两端取较新的一份
-    let budget = getBudget();
-    const cloudBudget = cloud && cloud.settings && cloud.settings.budget;
-    if (cloudBudget && typeof cloudBudget.amount === "number" &&
-        (!budget || String(cloudBudget.at || "") > String(budget.at || ""))) {
-      budget = cloudBudget;
-      localStorage.setItem(LS_BUDGET, JSON.stringify(cloudBudget));
+    // 设置（预算 / 记账项目 / 固定账单）：每项两端取较新的一份
+    const settingsOut = { ...((cloud && cloud.settings) || {}) };
+    for (const [key, ls, valid] of SYNCED_SETTINGS) {
+      let local = null;
+      try { local = JSON.parse(localStorage.getItem(ls)); } catch {}
+      if (local && !valid(local)) local = null;
+      const remote = cloud && cloud.settings && cloud.settings[key];
+      if (remote && valid(remote) && (!local || String(remote.at || "") > String(local.at || ""))) {
+        local = remote;
+        localStorage.setItem(ls, JSON.stringify(remote));
+      }
+      if (local) settingsOut[key] = local;
     }
+    itemsCache = null;
 
     // 2. 合并：墓碑并集 → 记录按 uid 并集（同 uid 取修改时间新的）→ 剔除已删除
     const tombs = [...new Set([...getTombstones(), ...cloudTombs])];
@@ -688,13 +809,16 @@ async function syncNow(silent) {
       body: JSON.stringify({
         records: merged,
         tombstones: tombs,
-        settings: { ...((cloud && cloud.settings) || {}), ...(budget ? { budget } : {}) },
+        settings: settingsOut,
         updated_at: new Date().toISOString(),
       }),
     });
     if (!put.ok) throw new Error("上传失败");
 
     if (!silent) showToast(`云同步完成 ✓ 共 ${merged.length} 条`);
+    const added = generateRecurring(); // 另一台设备新增的固定账单规则，在本机补记
+    if (added) scheduleSync();
+    renderCategoryGrid();
     refreshAll();
   } catch (e) {
     if (!silent) showToast("同步失败：" + (e.message || "网络不可达"));
@@ -783,6 +907,8 @@ function openSettings() {
   codeVisible = false; // 每次打开设置默认遮住同步码
   renderSyncStatus();
   renderBudgetStatus();
+  renderItemsStatus();
+  renderRecurStatus();
   $("#stMask").hidden = false;
   $("#stSheet").hidden = false;
   void $("#stSheet").offsetHeight;
@@ -820,6 +946,263 @@ function setupSettings() {
   $("#stMask").addEventListener("click", closeSettings);
 }
 
+/* ---------- 通用弹层（管理项目 / 固定账单） ---------- */
+const panelTimers = {};
+
+function openPanel(prefix) {
+  clearTimeout(panelTimers[prefix]);
+  const mask = $(`#${prefix}Mask`), sheet = $(`#${prefix}Sheet`);
+  mask.hidden = false;
+  sheet.hidden = false;
+  void sheet.offsetHeight;
+  mask.classList.add("show");
+  sheet.classList.add("show");
+  document.body.style.overflow = "hidden";
+  sheet.focus();
+}
+
+function closePanel(prefix) {
+  const mask = $(`#${prefix}Mask`), sheet = $(`#${prefix}Sheet`);
+  mask.classList.remove("show");
+  sheet.classList.remove("show");
+  document.body.style.overflow = "";
+  clearTimeout(panelTimers[prefix]);
+  panelTimers[prefix] = setTimeout(() => { mask.hidden = true; sheet.hidden = true; }, 250);
+}
+
+/* ---------- 管理项目 ---------- */
+let itEditing = -1; // 正在编辑的下标；-1 新增
+
+function renderItemsStatus() {
+  const n = getItems().length;
+  $("#itemsStatus").textContent = `${n} 个项目 · 增删、排序、设置子选项`;
+}
+
+function renderItemList() {
+  const items = getItems();
+  const list = $("#itList");
+  list.innerHTML = items.length ? items.map((it, i) => `
+    <div class="mg-item">
+      <div class="mg-icon">${itemIconHtml(it)}</div>
+      <div class="mg-info">
+        <div class="mg-name">${esc(it.name)}</div>
+        <div class="mg-desc">${it.subs.length ? "必选：" + it.subs.map(esc).join(" / ") : "无子选项"}</div>
+      </div>
+      <div class="mg-ops">
+        <button type="button" class="mg-op" data-act="up" data-i="${i}" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button>
+        <button type="button" class="mg-op" data-act="down" data-i="${i}" aria-label="下移" ${i === items.length - 1 ? "disabled" : ""}>↓</button>
+        <button type="button" class="mg-op" data-act="edit" data-i="${i}" aria-label="编辑">✎</button>
+        <button type="button" class="mg-op danger" data-act="del" data-i="${i}" aria-label="删除">×</button>
+      </div>
+    </div>`).join("") : '<p class="empty">还没有项目，点下面添加</p>';
+  list.querySelectorAll(".mg-op").forEach((b) => {
+    b.addEventListener("click", () => {
+      const i = +b.dataset.i;
+      const arr = getItems().map((x) => ({ ...x, subs: [...x.subs] }));
+      if (b.dataset.act === "up" && i > 0) [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+      else if (b.dataset.act === "down" && i < arr.length - 1) [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
+      else if (b.dataset.act === "edit") return openItemForm(i);
+      else if (b.dataset.act === "del") {
+        if (!confirm(`删除项目「${arr[i].name}」？已记的账单不受影响。`)) return;
+        if (activePresetName === arr[i].name) { activePresetName = null; activeSub = null; }
+        arr.splice(i, 1);
+      } else return;
+      saveItems(arr);
+      afterItemsChanged();
+    });
+  });
+}
+
+function afterItemsChanged() {
+  renderItemList();
+  renderItemsStatus();
+  renderCategoryGrid();
+}
+
+function openItemForm(i) {
+  itEditing = i;
+  const it = i >= 0 ? getItems()[i] : { name: "", icon: "", subs: [] };
+  $("#itName").value = it.name;
+  $("#itIcon").value = it.icon;
+  $("#itSubs").value = it.subs.join(" ");
+  $("#itForm").hidden = false;
+  $("#itFoot").hidden = true;
+  $("#itName").focus();
+}
+
+function closeItemForm() {
+  $("#itForm").hidden = true;
+  $("#itFoot").hidden = false;
+}
+
+function setupItems() {
+  $("#btnItems").addEventListener("click", () => {
+    closeSettings();
+    closeItemForm();
+    renderItemList();
+    openPanel("it");
+  });
+  $("#itClose").addEventListener("click", () => closePanel("it"));
+  $("#itMask").addEventListener("click", () => closePanel("it"));
+  $("#itAdd").addEventListener("click", () => openItemForm(-1));
+  $("#itCancel").addEventListener("click", closeItemForm);
+  $("#itReset").addEventListener("click", () => {
+    if (!confirm("恢复默认项目（餐饮、美团、淘宝、京东、抖音、拼多多）？自己添加的项目会被移除，已记账单不受影响。")) return;
+    activePresetName = null;
+    activeSub = null;
+    saveItems(DEFAULT_ITEMS);
+    afterItemsChanged();
+    showToast("已恢复默认项目");
+  });
+  $("#itSave").addEventListener("click", () => {
+    const name = $("#itName").value.trim();
+    if (!name) return showToast("请填写项目名称");
+    if (LOCAL_CATEGORIES.some((c) => c.name === name)) return showToast("不能与分类同名");
+    const arr = getItems().map((x) => ({ ...x, subs: [...x.subs] }));
+    if (arr.some((x, j) => x.name === name && j !== itEditing)) return showToast("已有同名项目");
+    const subs = $("#itSubs").value.split(/[\s,，、/／]+/).map((v) => v.trim()).filter(Boolean);
+    const item = cleanItem({ name, icon: $("#itIcon").value, subs });
+    if (itEditing >= 0) {
+      const old = arr[itEditing].name;
+      arr[itEditing] = item;
+      if (activePresetName === old) { activePresetName = null; activeSub = null; }
+    } else arr.push(item);
+    saveItems(arr);
+    closeItemForm();
+    afterItemsChanged();
+    showToast(itEditing >= 0 ? "项目已更新 ✓" : "项目已添加 ✓");
+  });
+}
+
+/* ---------- 固定账单管理 ---------- */
+let rcEditing = null; // 规则 id；null 新增
+
+function renderRecurStatus() {
+  const list = getRecurring();
+  $("#recurStatus").textContent = list.length
+    ? `${list.length} 项 · 每月共 ${fmt(list.reduce((a, r) => a + r.amount, 0))}`
+    : "房租、话费等每月自动记一笔";
+}
+
+function renderRecurList() {
+  const rules = getRecurring();
+  $("#rcList").innerHTML = rules.length ? rules.map((r) => `
+    <div class="mg-item">
+      <div class="mg-icon"><span class="icon">${iconForRecord(catById(r.category_id)?.name, r.name, "")}</span></div>
+      <div class="mg-info">
+        <div class="mg-name">${esc(r.name)} <span class="mg-amt">${fmt(r.amount)}</span></div>
+        <div class="mg-desc">每月 ${r.day} 号 · ${esc(catById(r.category_id)?.name || "")}</div>
+      </div>
+      <div class="mg-ops">
+        <button type="button" class="mg-op" data-act="edit" data-id="${esc(r.id)}" aria-label="编辑">✎</button>
+        <button type="button" class="mg-op danger" data-act="del" data-id="${esc(r.id)}" aria-label="删除">×</button>
+      </div>
+    </div>`).join("") : '<p class="empty">还没有固定账单</p>';
+  $("#rcList").querySelectorAll(".mg-op").forEach((b) => {
+    b.addEventListener("click", () => {
+      const id = b.dataset.id;
+      if (b.dataset.act === "edit") return openRecurForm(id);
+      const r = getRecurring().find((x) => x.id === id);
+      if (!r || !confirm(`删除固定账单「${r.name}」？以后不再自动生成，已生成的账单保留。`)) return;
+      saveRecurring(getRecurring().filter((x) => x.id !== id));
+      renderRecurList();
+      renderRecurStatus();
+    });
+  });
+}
+
+function openRecurForm(id) {
+  rcEditing = id;
+  const r = id ? getRecurring().find((x) => x.id === id) : null;
+  $("#rcCat").innerHTML = LOCAL_CATEGORIES.filter((c) => c.type === "expense")
+    .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  $("#rcName").value = r ? r.name : "";
+  $("#rcAmount").value = r ? r.amount : "";
+  $("#rcDay").value = r ? r.day : "";
+  $("#rcCat").value = String(r ? r.category_id : findCategoryId("住房"));
+  $("#rcForm").hidden = false;
+  $("#rcFoot").hidden = true;
+  $("#rcName").focus();
+}
+
+function closeRecurForm() {
+  $("#rcForm").hidden = true;
+  $("#rcFoot").hidden = false;
+}
+
+function setupRecurring() {
+  $("#btnRecur").addEventListener("click", () => {
+    closeSettings();
+    closeRecurForm();
+    renderRecurList();
+    openPanel("rc");
+  });
+  $("#rcClose").addEventListener("click", () => closePanel("rc"));
+  $("#rcMask").addEventListener("click", () => closePanel("rc"));
+  $("#rcAdd").addEventListener("click", () => openRecurForm(null));
+  $("#rcCancel").addEventListener("click", closeRecurForm);
+  $("#rcSave").addEventListener("click", async () => {
+    const name = $("#rcName").value.trim().slice(0, 12);
+    const amount = Math.round(parseAmount($("#rcAmount").value) * 100) / 100;
+    const day = Math.round(+$("#rcDay").value);
+    const category_id = +$("#rcCat").value;
+    if (!name) return showToast("请填写名称");
+    if (!(amount > 0)) return showToast("请输入有效金额");
+    if (!(day >= 1 && day <= 31)) return showToast("日期请填 1-31");
+    if (!catById(category_id)) return showToast("请选择分类");
+    const rules = getRecurring();
+    if (rcEditing) {
+      const r = rules.find((x) => x.id === rcEditing);
+      if (r) Object.assign(r, { name, amount, day, category_id }); // 只影响以后生成的账单
+    } else {
+      rules.push({ id: newUid(), name, amount, day, category_id, start: localDateStr().slice(0, 7) });
+    }
+    saveRecurring(rules);
+    closeRecurForm();
+    renderRecurList();
+    renderRecurStatus();
+    const n = generateRecurring();
+    if (n) { scheduleSync(); await refreshAll(); }
+    showToast(n ? `已保存，本月已到期，自动记入 ${n} 笔` : "已保存 ✓ 到期后自动记账");
+  });
+}
+
+/* ---------- 外观：跟随系统 / 浅色 / 深色 ---------- */
+const darkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+function applyTheme() {
+  const mode = localStorage.getItem(LS_THEME) || "auto";
+  const dark = mode === "dark" || (mode === "auto" && !!(darkQuery && darkQuery.matches));
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#15171a" : "#ff6b4a");
+  $$("#themeSeg .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.theme === mode));
+  if (window.Chart) {
+    Chart.defaults.color = cssVar("--text-muted");
+    Chart.defaults.borderColor = cssVar("--border");
+  }
+  try { window.CountsAndroid && window.CountsAndroid.setDarkTheme && window.CountsAndroid.setDarkTheme(dark); } catch {}
+}
+
+function setupTheme() {
+  applyTheme();
+  $$("#themeSeg .seg-btn").forEach((b) => {
+    b.addEventListener("click", () => {
+      localStorage.setItem(LS_THEME, b.dataset.theme);
+      applyTheme();
+      if ($("#panel-charts").classList.contains("active")) loadCharts(); // 图表按新配色重画
+    });
+  });
+  const onSys = () => {
+    if ((localStorage.getItem(LS_THEME) || "auto") !== "auto") return;
+    applyTheme();
+    if ($("#panel-charts").classList.contains("active")) loadCharts();
+  };
+  if (darkQuery) {
+    if (darkQuery.addEventListener) darkQuery.addEventListener("change", onSys);
+    else if (darkQuery.addListener) darkQuery.addListener(onSys);
+  }
+}
+
 function setupSync() {
   $("#btnSync").addEventListener("click", async () => {
     let pass = localStorage.getItem(LS_SYNC_PASS);
@@ -850,6 +1233,9 @@ function setupBackup() {
       app: "生活记账", version: 1,
       exported_at: new Date().toISOString(),
       records: dbAll(),
+      settings: Object.fromEntries(SYNCED_SETTINGS
+        .map(([key, ls]) => { try { return [key, JSON.parse(localStorage.getItem(ls))]; } catch { return [key, null]; } })
+        .filter(([, v]) => v)),
     };
     if (window.CountsAndroid) {
       // Android 的 WebView 不支持 blob 下载，交给系统“另存为”文件选择器。
@@ -879,6 +1265,13 @@ function setupBackup() {
       normalizeRecords(valid); // 旧备份里的已删分类同样归并到“其他支出”
       if (!confirm(`备份包含 ${valid.length} 条记录，导入将替换当前全部数据，确定？`)) return;
       dbWrite(valid);
+      if (data && data.settings) {
+        for (const [key, ls, ok] of SYNCED_SETTINGS) {
+          if (ok(data.settings[key])) localStorage.setItem(ls, JSON.stringify(data.settings[key]));
+        }
+        itemsCache = null;
+        renderCategoryGrid();
+      }
       showToast("导入成功 ✓");
       refreshAll();
     } catch {
@@ -905,7 +1298,7 @@ let activeSub = null;        // 平台下的子类型（外卖/团购/商城）
 
 // 快捷项：选中渠道，金额清零由用户输入；备注完全留给用户自己写
 function applyPreset(item) {
-  const catId = findCategoryId(item.category);
+  const catId = findCategoryId(ITEM_CATEGORY);
   if (!catId) return showToast("分类未找到");
   selectedCategoryId = catId;
   if (activePresetName !== item.name) activeSub = null; // 换平台就重选子类型
@@ -917,16 +1310,16 @@ function applyPreset(item) {
 // 平台子类型行：美团/淘宝/京东 → 外卖/团购；抖音 → 商城/团购
 function renderSubRow() {
   const row = $("#subRow");
-  const item = PRESET_ITEMS.find((p) => p.name === activePresetName);
-  if (currentType !== "expense" || !item || !item.subs) {
+  const item = itemByName(activePresetName);
+  if (currentType !== "expense" || !item || !item.subs.length) {
     row.hidden = true;
     row.innerHTML = "";
     return;
   }
   row.hidden = false;
   row.classList.remove("need");
-  row.innerHTML = `<span class="sub-label">${item.name}<em>必选</em></span>` + item.subs.map((sname) => `
-    <button type="button" class="sub-btn${activeSub === sname ? " active" : ""}" data-sub="${sname}">${sname}</button>
+  row.innerHTML = `<span class="sub-label">${esc(item.name)}<em>必选</em></span>` + item.subs.map((sname) => `
+    <button type="button" class="sub-btn${activeSub === sname ? " active" : ""}" data-sub="${esc(sname)}">${esc(sname)}</button>
   `).join("");
   row.querySelectorAll(".sub-btn").forEach((b) => {
     b.addEventListener("click", () => {
@@ -943,15 +1336,13 @@ function renderCategoryGrid() {
   const cells = [];
 
   // 常用消费捷径排在最前面
+  const items = getItems();
   if (currentType === "expense") {
-    PRESET_ITEMS.forEach((item, i) => {
-      const iconHtml = item.img
-        ? `<img class="icon-img" src="${item.img}" alt="">`
-        : `<span class="icon">${item.icon}</span>`;
+    items.forEach((item, i) => {
       cells.push(`
         <button type="button" class="cat-btn preset${activePresetName === item.name ? " active" : ""}" data-preset="${i}">
-          ${iconHtml}
-          <span>${item.name}</span>
+          ${itemIconHtml(item)}
+          <span>${esc(item.name)}</span>
         </button>
       `);
     });
@@ -974,11 +1365,12 @@ function renderCategoryGrid() {
     grid.querySelector(`.cat-btn[data-id="${selectedCategoryId}"]`)?.classList.add("active");
   }
   renderSubRow();
+  renderQuickRow();
 
   grid.querySelectorAll(".cat-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (btn.dataset.preset !== undefined) {
-        applyPreset(PRESET_ITEMS[+btn.dataset.preset]);
+        applyPreset(items[+btn.dataset.preset]);
         return;
       }
       selectedCategoryId = +btn.dataset.id;
@@ -991,6 +1383,57 @@ function renderCategoryGrid() {
     });
   });
 }
+
+/* ---------- 常用记录一键再记：近 90 天重复出现过的“项目·类型 备注”组合 ---------- */
+function quickCombos() {
+  const since = localDateStr(new Date(Date.now() - 90 * 864e5));
+  const map = new Map();
+  for (const r of dbAll()) {
+    if (r.type !== "expense" || String(r.record_date) < since || String(r.uid || "").startsWith("recur-")) continue;
+    const ch = r.channel || "";
+    let sub = "";
+    if (ch) {
+      const it = itemByName(ch);
+      if (!it) continue; // 已删除的项目不再推荐
+      if (it.subs.length && !it.subs.includes(r.sub)) continue;
+      if (it.subs.length) sub = r.sub; // 项目已取消子选项时不再带出旧子类型
+    }
+    if (!ch && !r.note) continue;
+    const key = [ch, sub, r.note || "", ch ? "" : r.category_id].join("\u0001");
+    const c = map.get(key) || { channel: ch, sub, note: r.note || "",
+      category_id: ch ? null : r.category_id, n: 0, last: "" };
+    c.n++;
+    if (String(r.record_date) > c.last) c.last = String(r.record_date);
+    map.set(key, c);
+  }
+  return [...map.values()].filter((c) => c.n >= 2)
+    .sort((a, b) => b.n - a.n || b.last.localeCompare(a.last)).slice(0, 6);
+}
+
+function renderQuickRow() {
+  const row = $("#quickRow");
+  const list = currentType === "expense" ? quickCombos() : [];
+  row.hidden = !list.length;
+  if (!list.length) { row.innerHTML = ""; return; }
+  row.innerHTML = '<span class="quick-label">常用</span>' + list.map((c, i) => {
+    const base = c.channel ? (c.sub ? `${c.channel}·${c.sub}` : c.channel) : (catById(c.category_id)?.name || "");
+    return `<button type="button" class="quick-chip" data-i="${i}">${esc(base)}${c.note ? ` <b>${esc(c.note)}</b>` : ""}</button>`;
+  }).join("");
+  row.querySelectorAll(".quick-chip").forEach((b) => {
+    b.addEventListener("click", () => {
+      const c = list[+b.dataset.i];
+      activePresetName = c.channel || null;
+      activeSub = c.sub || null;
+      selectedCategoryId = c.channel ? findCategoryId(ITEM_CATEGORY) : c.category_id;
+      $("#note").value = c.note;
+      $("#amount").value = "";
+      renderCategoryGrid();
+      $("#amount").focus();
+      showToast("已带出项目和备注，填金额即可");
+    });
+  });
+}
+
 
 // 每类请求各自的代号：响应回来时若已过期（用户又切了月份）则丢弃，防止旧数据覆盖新数据
 const gens = { summary: 0, records: 0, charts: 0 };
@@ -1029,8 +1472,11 @@ async function loadRecords() {
   const g = ++gens.records;
   const y = getFilterYear(), m = getFilterMonth();
   const type = filterTypeValue;
+  const q0 = ($("#billSearch").value || "").trim();
+  const allMonths = $("#searchAll").checked && !!q0; // 勾选“搜索全部月份”且有关键词时跨月
   let url = `/api/records?year=${y}&month=${m}`;
   if (type) url += `&type=${type}`;
+  if (allMonths) url += "&all=1";
   let records = await api(url);
   if (g !== gens.records) return;
   if (sortAsc) records.reverse(); // 接口默认日期倒序，反转即为正序
@@ -1086,10 +1532,11 @@ async function loadRecords() {
   list.innerHTML = groups.map((g) => {
     const [yy, mm, dd] = g.date.split("-").map(Number);
     const wk = "日一二三四五六"[new Date(yy, mm - 1, dd).getDay()];
+    const yp = allMonths && yy !== new Date().getFullYear() ? `${yy}年` : "";
     const out = g.items.filter((r) => r.type === "expense").reduce((a, r) => a + r.amount, 0);
     const inc = g.items.filter((r) => r.type === "income").reduce((a, r) => a + r.amount, 0);
     const tot = [out ? `支出 ${fmt(out)}` : "", inc ? `收入 ${fmt(inc)}` : ""].filter(Boolean).join("  ");
-    return `<div class="day-head"><span>${mm}月${dd}日 周${wk}${g.date === todayStr ? " · 今天" : ""}</span><span>${tot}</span></div>`
+    return `<div class="day-head"><span>${yp}${mm}月${dd}日 周${wk}${g.date === todayStr ? " · 今天" : ""}</span><span>${tot}</span></div>`
       + g.items.map(rowHtml).join("");
   }).join("");
 
@@ -1133,7 +1580,7 @@ let edId = null, edSub = null, edOpts = [], edCloseTimer = null;
 function edItemOptions(rec) {
   const opts = [];
   if (rec.type === "expense") {
-    PRESET_ITEMS.forEach((p) => opts.push({ key: "p:" + p.name, label: p.name, channel: p.name, catName: p.category }));
+    getItems().forEach((p) => opts.push({ key: "p:" + p.name, label: p.name, channel: p.name, catName: ITEM_CATEGORY }));
   }
   LOCAL_CATEGORIES.filter((c) => c.type === rec.type)
     .forEach((c) => opts.push({ key: "c:" + c.id, label: c.name, channel: "", catName: c.name }));
@@ -1147,14 +1594,14 @@ function edItemOptions(rec) {
 
 function renderEdSubs() {
   const key = $("#edItem").value;
-  const p = PRESET_ITEMS.find((x) => "p:" + x.name === key);
+  const p = getItems().find((x) => "p:" + x.name === key);
   const wrap = $("#edSubWrap");
-  if (!p || !p.subs) { wrap.hidden = true; edSub = null; return; }
+  if (!p || !p.subs.length) { wrap.hidden = true; edSub = null; return; }
   if (!p.subs.includes(edSub)) edSub = null;
   wrap.hidden = false;
   wrap.classList.remove("need");
   $("#edSubs").innerHTML = p.subs.map((n) =>
-    `<button type="button" class="sub-btn${edSub === n ? " active" : ""}" data-sub="${n}">${n}</button>`).join("");
+    `<button type="button" class="sub-btn${edSub === n ? " active" : ""}" data-sub="${esc(n)}">${esc(n)}</button>`).join("");
   $("#edSubs").querySelectorAll(".sub-btn").forEach((b) => {
     b.addEventListener("click", () => {
       edSub = b.dataset.sub;
@@ -1201,7 +1648,7 @@ function closeEdit() {
 async function saveEdit() {
   const opt = edOpts.find((o) => o.key === $("#edItem").value);
   if (!opt) return showToast("请选择项目");
-  const amount = +$("#edAmount").value;
+  const amount = parseAmount($("#edAmount").value);
   if (!(amount > 0)) return showToast("请输入有效金额");
   const rec = dbAll().find((r) => r.id === edId);
   if (!rec) return closeEdit();
@@ -1250,6 +1697,39 @@ function destroyChart(key) {
     charts[key].destroy();
     charts[key] = null;
   }
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+}
+
+/* ---------- 统计页卡片折叠（记住状态；默认收起趋势和年度图，减少滑动） ---------- */
+const FOLD_DEFAULT = { pie: true, line: false, bar: false, top: true };
+
+function getFolds() {
+  try { return { ...FOLD_DEFAULT, ...(JSON.parse(localStorage.getItem(LS_FOLDS)) || {}) }; }
+  catch { return { ...FOLD_DEFAULT }; }
+}
+
+function setupFolds() {
+  const folds = getFolds();
+  $$(".fold").forEach((card) => {
+    const key = card.dataset.fold;
+    const head = card.querySelector(".fold-head");
+    const apply = (open) => {
+      card.classList.toggle("closed", !open);
+      head.setAttribute("aria-expanded", String(open));
+    };
+    apply(folds[key] !== false);
+    head.addEventListener("click", () => {
+      const open = card.classList.contains("closed");
+      apply(open);
+      const f = getFolds();
+      f[key] = open;
+      localStorage.setItem(LS_FOLDS, JSON.stringify(f));
+      if (open && charts[key]) charts[key].resize(); // 收起时画布尺寸为 0，展开后重算
+    });
+  });
 }
 
 async function loadCharts() {
@@ -1354,7 +1834,7 @@ function renderExpensePie(breakdown) {
   if (!breakdown.length) {
     charts.pie = new Chart(ctx, {
       type: "doughnut",
-      data: { labels: ["暂无数据"], datasets: [{ data: [1], backgroundColor: ["#eee"] }] },
+      data: { labels: ["暂无数据"], datasets: [{ data: [1], backgroundColor: [cssVar("--border")] }] },
       options: { plugins: { legend: { display: false } } },
     });
     return;
@@ -1368,7 +1848,7 @@ function renderExpensePie(breakdown) {
         data: breakdown.map((d) => d.total),
         backgroundColor: CHART_COLORS,
         borderWidth: 2,
-        borderColor: "#fff",
+        borderColor: cssVar("--surface"),
       }],
     },
     options: {
@@ -1392,7 +1872,7 @@ function renderExpensePie(breakdown) {
               return chart.data.labels.map((label, i) => ({
                 text: `${label}  ${fmt(ds.data[i])}`,
                 fillStyle: CHART_COLORS[i % CHART_COLORS.length],
-                strokeStyle: "#fff",
+                strokeStyle: cssVar("--surface"),
                 lineWidth: 2,
                 index: i,
               }));
@@ -1414,10 +1894,10 @@ function renderExpensePie(breakdown) {
         c.textAlign = "center";
         c.textBaseline = "middle";
         c.font = "12px 'Noto Sans SC', sans-serif";
-        c.fillStyle = "#8a8a8a";
+        c.fillStyle = cssVar("--text-muted");
         c.fillText("总支出", x, y - 14);
         c.font = "700 17px 'Noto Sans SC', sans-serif";
-        c.fillStyle = "#e74c3c";
+        c.fillStyle = cssVar("--expense");
         c.fillText(fmt(total), x, y + 8);
         c.restore();
       },
@@ -1510,7 +1990,7 @@ function renderMonthlyBar(monthly) {
         chart.data.datasets.forEach((ds, di) => {
           const meta = chart.getDatasetMeta(di);
           if (meta.hidden) return;
-          c.fillStyle = di === 0 ? "#27ae60" : "#c0392b";
+          c.fillStyle = di === 0 ? cssVar("--income") : cssVar("--expense");
           meta.data.forEach((bar, i) => {
             const v = ds.data[i];
             if (!v) return; // 0 不标
@@ -1538,7 +2018,7 @@ function renderTopExpenses(top) {
         <span class="rank">${i + 1}</span>
         <div>
           <div>${esc(recLabel(item))}${item.note ? " · " + esc(item.note) : ""}</div>
-          <div style="font-size:12px;color:#8a8a8a">${esc(item.record_date)}</div>
+          <div class="top-date">${esc(item.record_date)}</div>
         </div>
       </div>
       <span class="amount">${fmt(item.amount)}</span>
@@ -1547,6 +2027,7 @@ function renderTopExpenses(top) {
 }
 
 async function refreshAll() {
+  renderQuickRow();
   await Promise.all([loadSummary(), loadRecords()]);
   const chartsPanel = $("#panel-charts");
   if (chartsPanel.classList.contains("active")) {
@@ -1580,10 +2061,11 @@ function setupForm() {
     });
   });
 
+
   $("#recordForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const amount = +$("#amount").value;
-    if (!amount || amount <= 0) return showToast("请输入有效金额");
+    const amount = parseAmount($("#amount").value);
+    if (!(amount > 0)) return showToast("请输入有效金额");
     if (!selectedCategoryId) return showToast("请选择分类"); // 离线冷启动分类可能为空
     const subErr = subRequiredError(currentType, activePresetName || "", activeSub || "");
     if (subErr) {
@@ -1639,6 +2121,11 @@ function setupFilters() {
   });
   $("#filterChannel").addEventListener("change", loadRecords);
   $("#billSearch").addEventListener("input", loadRecords);
+  $("#searchAll").addEventListener("change", () => {
+    $("#billSearch").placeholder = $("#searchAll").checked
+      ? "搜索全部月份：备注 / 平台 / 金额" : "搜索本月账单：备注 / 平台 / 金额";
+    loadRecords();
+  });
   $("#btnSort").addEventListener("click", () => {
     sortAsc = !sortAsc;
     $("#btnSort").textContent = sortAsc ? "日期↑" : "日期↓";
@@ -1657,6 +2144,10 @@ async function init() {
   setupSettings();
   setupSyncCode();
   setupEdit();
+  setupItems();
+  setupRecurring();
+  setupTheme();
+  setupFolds();
   await migrateFromServer(); // 老版本 app.py 的数据一次性搬进本地
   {
     // 旧分类（餐饮/交通/购物/娱乐）的历史记录自动归并到“其他支出”
@@ -1664,7 +2155,15 @@ async function init() {
     if (normalizeRecords(recs)) dbWrite(recs);
   }
   await loadCategories();
+  const added = generateRecurring();
+  if (added) { scheduleSync(); showToast(`已自动记入 ${added} 笔固定账单`); }
   await refreshAll();
+  // 应用长时间挂在后台、跨天回来时补记固定账单
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    const n = generateRecurring();
+    if (n) { scheduleSync(); refreshAll(); showToast(`已自动记入 ${n} 笔固定账单`); }
+  });
 
   // 离线支持：注册 Service Worker 缓存页面外壳（数据本身就在本地，天然离线可用）
   if (!window.CountsAndroid && "serviceWorker" in navigator && location.protocol !== "file:") {
@@ -1677,8 +2176,9 @@ async function init() {
 // 安卓返回键先收起弹层，再回到记账页；首页由系统返回桌面。
 window.handleAndroidBack = function () {
   for (const [id, close] of [
-    ["ddSheet", closeDayDetail], ["stSheet", closeSettings],
-    ["dpSheet", closeDp], ["mpSheet", closeSheet],
+    ["dpSheet", closeDp], ["ddSheet", closeDayDetail], ["edSheet", closeEdit],
+    ["itSheet", () => closePanel("it")], ["rcSheet", () => closePanel("rc")],
+    ["stSheet", closeSettings], ["mpSheet", closeSheet],
   ]) {
     if (!document.getElementById(id).hidden) { close(); return true; }
   }

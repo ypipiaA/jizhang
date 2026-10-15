@@ -15,7 +15,41 @@
   --shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
   --radius: 16px;
   --radius-sm: 10px;
+  --field: #fafafa;
+  --hover: #fcf8f5;
+  --faint: #d5d5d5;
+  --page-bg: linear-gradient(160deg, #fff5f0 0%, #f5f0eb 40%, #eef4f8 100%);
+  --toast-bg: rgba(44, 44, 44, 0.88);
+  --track: rgba(0, 0, 0, 0.06);
+  color-scheme: light;
 }
+
+/* 深色模式：只换颜色变量，布局不变 */
+:root[data-theme="dark"] {
+  --bg: #15171a;
+  --surface: #1f2226;
+  --text: #e6e4e1;
+  --text-muted: #9a9ca0;
+  --primary: #ff7a5c;
+  --primary-light: #3a2620;
+  --income: #3ddc84;
+  --income-bg: #1b3326;
+  --expense: #ff6b5e;
+  --expense-bg: #3b2020;
+  --balance: #5dade2;
+  --balance-bg: #1c2b38;
+  --border: #30343a;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --field: #272a2f;
+  --hover: #292c31;
+  --faint: #4a4e55;
+  --page-bg: #121416;
+  --toast-bg: rgba(60, 63, 68, 0.95);
+  --track: rgba(255, 255, 255, 0.1);
+  color-scheme: dark;
+}
+
+input, select, textarea { color: var(--text); }
 
 * {
   box-sizing: border-box;
@@ -34,7 +68,8 @@ html {
 body {
   touch-action: pan-x pan-y;
   font-family: "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
-  background: linear-gradient(160deg, #fff5f0 0%, #f5f0eb 40%, #eef4f8 100%);
+  background: var(--page-bg);
+  background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
   line-height: 1.5;
@@ -117,7 +152,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  background: #fafafa;
+  background: var(--field);
   border-radius: var(--radius-sm);
 }
 
@@ -186,7 +221,7 @@ body {
 
 .sub-btn {
   border: 1px solid var(--border);
-  background: #fafafa;
+  background: var(--field);
   border-radius: 999px;
   padding: 0 16px;
   min-height: 36px;
@@ -358,7 +393,7 @@ body {
   width: 44px;
   height: 44px;
   border: 1px solid var(--border);
-  background: #fafafa;
+  background: var(--field);
   border-radius: 50%;
   font-size: 20px;
   color: var(--text-muted);
@@ -385,7 +420,7 @@ body {
   padding: 12px 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fafafa;
+  background: var(--field);
   font-family: inherit;
   font-size: 14px;
   cursor: pointer;
@@ -635,7 +670,7 @@ body {
 }
 
 .amount-input-wrap input::placeholder {
-  color: #ddd;
+  color: var(--faint);
 }
 
 /* 去掉数字输入框的上下加减箭头 */
@@ -665,7 +700,7 @@ body {
   padding: 10px 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fafafa;
+  background: var(--field);
   cursor: pointer;
   font-family: inherit;
   font-size: 11px;
@@ -851,7 +886,7 @@ body {
 .btn-edit {
   border: none;
   background: transparent;
-  color: #ccc;
+  color: var(--faint);
   cursor: pointer;
   font-size: 18px;
   padding: 4px;
@@ -920,7 +955,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  background: #fafafa;
+  background: var(--field);
   border-radius: 8px;
   padding: 7px 2px;
   min-width: 0;
@@ -951,7 +986,7 @@ body {
 .dt-cell.blank { visibility: hidden; }
 
 .dt-cell.zero { background: transparent; }
-.dt-cell.zero .dt-amt { color: #d5d5d5; font-weight: 400; }
+.dt-cell.zero .dt-amt { color: var(--faint); font-weight: 400; }
 
 /* 有消费的日子可点击查看明细 */
 .dt-cell.clickable {
@@ -1034,7 +1069,7 @@ body {
   bottom: 32px;
   left: 50%;
   transform: translateX(-50%) translateY(80px);
-  background: rgba(44, 44, 44, 0.88);
+  background: var(--toast-bg);
   color: white;
   padding: 12px 24px;
   border-radius: 24px;
@@ -1146,7 +1181,7 @@ body {
 .budget-bar {
   height: 6px;
   border-radius: 3px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--track);
   overflow: hidden;
 }
 
@@ -1179,7 +1214,7 @@ body {
   padding: 10px 14px;
   font-family: inherit;
   font-size: 15px;
-  background: #fafafa;
+  background: var(--field);
   outline: none;
   -webkit-appearance: none;
   appearance: none;
@@ -1196,7 +1231,7 @@ body {
   margin: 10px 2px 4px;
 }
 
-.bill-hint { color: #c4bdb6; }
+.bill-hint { color: var(--faint); }
 
 .day-head {
   position: sticky;
@@ -1223,7 +1258,7 @@ body {
 .record-item.editable:active { background: var(--primary-light); }
 
 @media (hover: hover) {
-  .record-item.editable:hover { background: #fcf8f5; }
+  .record-item.editable:hover { background: var(--hover); }
 }
 
 /* ==================== 子类型必选提示 ==================== */
@@ -1262,7 +1297,7 @@ body {
   align-items: center;
   gap: 12px;
   padding: 6px 12px;
-  background: #fafafa;
+  background: var(--field);
   border-radius: var(--radius-sm);
   min-height: 48px;
 }
@@ -1314,3 +1349,145 @@ body {
 /* 日期选择器在编辑面板之上 */
 #dpMask { z-index: 210; }
 #dpSheet { z-index: 211; }
+
+
+/* ==================== 1.0.3：常用记录 ==================== */
+.quick-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 12px;
+  margin-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.quick-row::-webkit-scrollbar { display: none; }
+
+.quick-label {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.quick-chip {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--text);
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.quick-chip b { font-weight: 400; color: var(--text-muted); }
+.quick-chip:active { border-color: var(--primary); background: var(--primary-light); }
+
+/* ==================== 跨月搜索 ==================== */
+.bill-search { display: flex; align-items: center; gap: 10px; }
+.bill-search input[type="search"] { flex: 1; min-width: 0; }
+
+.search-all {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.search-all input { accent-color: var(--primary); width: 16px; height: 16px; }
+
+/* ==================== 统计页：可折叠卡片 ==================== */
+.fold-head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.fold-head .card-title { margin-bottom: 0; }
+.fold-body { margin-top: 14px; }
+.fold-arrow { color: var(--text-muted); font-size: 16px; transition: transform 0.2s; }
+.fold.closed .fold-body { display: none; }
+.fold.closed .fold-arrow { transform: rotate(-90deg); }
+.top-date { font-size: 12px; color: var(--text-muted); }
+
+/* ==================== 管理项目 / 固定账单 ==================== */
+.mp-sheet.tall { max-height: 88vh; overflow-y: auto; }
+
+.sheet-tip {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 2px 10px;
+  line-height: 1.6;
+}
+
+.mg-list { display: flex; flex-direction: column; gap: 6px; }
+
+.mg-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--field);
+  border-radius: var(--radius-sm);
+}
+
+.mg-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.mg-icon .icon-img { width: 30px; height: 30px; }
+.mg-info { flex: 1; min-width: 0; }
+.mg-name { font-size: 15px; font-weight: 600; }
+.mg-amt { font-weight: 400; font-size: 13px; color: var(--expense); margin-left: 4px; }
+.mg-desc { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-ops { display: flex; gap: 4px; flex-shrink: 0; }
+
+.mg-op {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.mg-op:disabled { opacity: 0.3; cursor: default; }
+.mg-op.danger { color: var(--expense); }
+.mg-op:not(:disabled):active { background: var(--primary-light); }
+
+.mg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.mg-foot { display: flex; gap: 10px; margin-top: 14px; }
+.mg-foot .btn-primary { flex: 1; margin-top: 0; }
+
+.st-wrap { flex-wrap: wrap; }

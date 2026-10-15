@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#ff6b4a">
+  <meta name="color-scheme" content="light dark">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <!-- iOS 添加到主屏幕 -->
@@ -70,8 +71,10 @@
 
             <div class="amount-input-wrap">
               <span class="currency">¥</span>
-              <input type="number" id="amount" step="0.01" min="0.01" placeholder="0.00" required>
+              <input type="number" id="amount" step="0.01" min="0.01" inputmode="decimal" placeholder="0.00" required>
             </div>
+
+            <div class="quick-row" id="quickRow" hidden></div>
 
             <div class="category-grid" id="categoryGrid"></div>
             <div class="sub-row" id="subRow" hidden></div>
@@ -109,6 +112,7 @@
           </div>
           <div class="bill-search">
             <input type="search" id="billSearch" placeholder="搜索本月账单：备注 / 平台 / 金额" autocomplete="off">
+            <label class="search-all"><input type="checkbox" id="searchAll"> 搜索全部月份</label>
           </div>
           <div class="bill-summary">
             <span id="billSummary"></span>
@@ -123,39 +127,31 @@
       <!-- 统计 -->
       <section class="panel" id="panel-charts">
         <div class="chart-grid">
-          <div class="card chart-card">
-            <h2 class="card-title">支出分类</h2>
-            <div class="chart-wrap">
-              <canvas id="expensePieChart"></canvas>
-            </div>
-          </div>
-          <div class="card chart-card">
-            <h2 class="card-title">每日支出趋势</h2>
-            <div class="chart-wrap">
-              <canvas id="dailyLineChart"></canvas>
-            </div>
-          </div>
           <div class="card chart-card wide">
             <div class="card-header">
               <h2 class="card-title">每日消费总额</h2>
-              <span class="card-hint">切换顶部年月可查看上月</span>
+              <span class="card-hint">点日期看当天明细</span>
             </div>
             <div class="dt-week">
               <span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span>
             </div>
             <div class="daily-totals" id="dailyTotals"></div>
           </div>
-          <div class="card chart-card wide">
-            <h2 class="card-title">年度收支对比</h2>
-            <div class="chart-wrap">
-              <canvas id="monthlyBarChart"></canvas>
-            </div>
+          <div class="card fold wide chart-card" data-fold="pie">
+            <button type="button" class="fold-head" aria-expanded="true"><h2 class="card-title">支出分类</h2><span class="fold-arrow" aria-hidden="true">▾</span></button>
+            <div class="fold-body"><div class="chart-wrap"><canvas id="expensePieChart"></canvas></div></div>
           </div>
-          <div class="card">
-            <h2 class="card-title">本月大额支出 TOP5</h2>
-            <ul class="top-list" id="topExpenses">
-              <li class="empty">暂无数据</li>
-            </ul>
+          <div class="card fold wide chart-card" data-fold="line">
+            <button type="button" class="fold-head" aria-expanded="true"><h2 class="card-title">每日支出趋势</h2><span class="fold-arrow" aria-hidden="true">▾</span></button>
+            <div class="fold-body"><div class="chart-wrap"><canvas id="dailyLineChart"></canvas></div></div>
+          </div>
+          <div class="card fold wide chart-card" data-fold="bar">
+            <button type="button" class="fold-head" aria-expanded="true"><h2 class="card-title">年度收支对比</h2><span class="fold-arrow" aria-hidden="true">▾</span></button>
+            <div class="fold-body"><div class="chart-wrap"><canvas id="monthlyBarChart"></canvas></div></div>
+          </div>
+          <div class="card fold wide" data-fold="top">
+            <button type="button" class="fold-head" aria-expanded="true"><h2 class="card-title">本月大额支出 TOP5</h2><span class="fold-arrow" aria-hidden="true">▾</span></button>
+            <div class="fold-body"><ul class="top-list" id="topExpenses"><li class="empty">暂无数据</li></ul></div>
           </div>
         </div>
       </section>
@@ -237,6 +233,31 @@
         </div>
         <div class="st-row">
           <div class="st-info">
+            <div class="st-name">管理项目</div>
+            <div class="st-desc" id="itemsStatus">记一笔里的平台：增删、排序、设置子选项</div>
+          </div>
+          <button type="button" class="btn-ghost" id="btnItems">管理</button>
+        </div>
+        <div class="st-row">
+          <div class="st-info">
+            <div class="st-name">固定账单</div>
+            <div class="st-desc" id="recurStatus">房租、话费等每月自动记一笔</div>
+          </div>
+          <button type="button" class="btn-ghost" id="btnRecur">管理</button>
+        </div>
+        <div class="st-row st-wrap">
+          <div class="st-info">
+            <div class="st-name">外观</div>
+            <div class="st-desc">深色模式，晚上记账不刺眼</div>
+          </div>
+          <div class="seg" id="themeSeg" role="group" aria-label="外观">
+            <button type="button" class="seg-btn" data-theme="auto">跟随系统</button>
+            <button type="button" class="seg-btn" data-theme="light">浅色</button>
+            <button type="button" class="seg-btn" data-theme="dark">深色</button>
+          </div>
+        </div>
+        <div class="st-row">
+          <div class="st-info">
             <div class="st-name">云同步</div>
             <div class="st-desc" id="syncStatus">未开启 · 电脑手机共享同一本账</div>
           </div>
@@ -265,6 +286,56 @@
             <input type="file" id="importFile" accept="application/json,.json" hidden>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 管理项目 -->
+    <div class="mp-mask" id="itMask" hidden></div>
+    <div class="mp-sheet tall" id="itSheet" role="dialog" aria-modal="true" aria-label="管理项目" tabindex="-1" hidden>
+      <div class="mp-sheet-handle"></div>
+      <div class="mp-sheet-header">
+        <span class="mp-sheet-title">管理项目</span>
+        <button type="button" class="mp-today" id="itClose">完成</button>
+      </div>
+      <p class="sheet-tip">这些项目显示在「记一笔」最前面，记入「其他支出」。设了子选项的项目，记账时必须选一个。删除项目不影响已记的账单。</p>
+      <div class="mg-list" id="itList"></div>
+      <div class="mg-form" id="itForm" hidden>
+        <label class="ed-row"><span>名称</span><input type="text" id="itName" maxlength="8" placeholder="如：饿了么"></label>
+        <label class="ed-row"><span>图标</span><input type="text" id="itIcon" maxlength="8" placeholder="一个表情，可不填"></label>
+        <label class="ed-row"><span>子选项</span><input type="text" id="itSubs" placeholder="空格或逗号分隔，如：外卖 团购"></label>
+        <div class="ed-actions">
+          <button type="button" class="btn-danger-ghost" id="itCancel">取消</button>
+          <button type="button" class="btn-primary" id="itSave">保存</button>
+        </div>
+      </div>
+      <div class="mg-foot" id="itFoot">
+        <button type="button" class="btn-ghost" id="itReset">恢复默认</button>
+        <button type="button" class="btn-primary" id="itAdd">＋ 添加项目</button>
+      </div>
+    </div>
+
+    <!-- 固定账单 -->
+    <div class="mp-mask" id="rcMask" hidden></div>
+    <div class="mp-sheet tall" id="rcSheet" role="dialog" aria-modal="true" aria-label="固定账单" tabindex="-1" hidden>
+      <div class="mp-sheet-handle"></div>
+      <div class="mp-sheet-header">
+        <span class="mp-sheet-title">固定账单</span>
+        <button type="button" class="mp-today" id="rcClose">完成</button>
+      </div>
+      <p class="sheet-tip">每月到了设定日期自动记一笔支出，打开应用时补记，从添加的当月开始。自动生成的账单删掉后不会再补。</p>
+      <div class="mg-list" id="rcList"></div>
+      <div class="mg-form" id="rcForm" hidden>
+        <label class="ed-row"><span>名称</span><input type="text" id="rcName" maxlength="12" placeholder="如：房租、话费"></label>
+        <label class="ed-row"><span>金额</span><input type="number" id="rcAmount" step="0.01" min="0.01" inputmode="decimal" placeholder="0.00"></label>
+        <label class="ed-row"><span>每月几号</span><input type="number" id="rcDay" min="1" max="31" inputmode="numeric" placeholder="1-31，小月按月底"></label>
+        <label class="ed-row"><span>分类</span><select id="rcCat"></select></label>
+        <div class="ed-actions">
+          <button type="button" class="btn-danger-ghost" id="rcCancel">取消</button>
+          <button type="button" class="btn-primary" id="rcSave">保存</button>
+        </div>
+      </div>
+      <div class="mg-foot" id="rcFoot">
+        <button type="button" class="btn-primary" id="rcAdd">＋ 添加固定账单</button>
       </div>
     </div>
 

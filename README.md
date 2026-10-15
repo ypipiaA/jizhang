@@ -4,11 +4,14 @@
 
 - [打开网页版](https://jizhang-d9k.pages.dev/)
 - [安卓下载页面](https://jizhang-d9k.pages.dev/downloads/)
-- [下载 Android 1.0.2 安装包](https://jizhang-d9k.pages.dev/downloads/counts-1.0.2.apk)
+- [下载 Android 1.0.3 安装包](https://jizhang-d9k.pages.dev/downloads/counts-1.0.3.apk)
 
 ## 功能
 
 - 记录收入与支出，选择分类、平台和日期，编辑备注或删除记录。
+- 设置里「管理项目」：自行增删、排序平台，决定哪些平台要选「外卖/团购」等子选项。
+- 固定账单（房租、话费等）每月自动记账；常用记录一键再记，只需填金额。
+- 账单可搜索全部月份；统计页每日消费日历置顶、图表可折叠；支持深色模式。
 - 按月份查看账单、收支汇总，以及分类、每日和年度统计图表。
 - 导入、导出 JSON 备份，方便迁移账本。
 - 可选 Cloudflare KV 云同步，默认关闭；开启后需要网络和可用的同步服务。
@@ -50,7 +53,7 @@ python build_offline.py
 python build_android.py --java-home "<JDK目录>" --sdk "<Android SDK目录>"
 ```
 
-构建不依赖 Gradle。当前应用 ID 为 `com.counts.life`，版本为 `1.0.2`（versionCode `3`），输出为 `dist/android/counts-1.0.2.apk`。后续版本以 `android/app/src/main/AndroidManifest.xml` 为准。
+构建不依赖 Gradle。当前应用 ID 为 `com.counts.life`，版本为 `1.0.3`（versionCode `4`），输出为 `dist/android/counts-1.0.3.apk`。后续版本以 `android/app/src/main/AndroidManifest.xml` 为准。
 
 签名保存在本机 `.android-signing/`，请单独安全备份整个目录。后续覆盖升级必须沿用原签名；GitHub 源码不包含签名密钥、密码或个人账本。首次在新机器构建前，应恢复原有签名备份。
 

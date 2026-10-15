@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.net.Uri;
@@ -11,6 +12,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
@@ -48,14 +50,14 @@ public final class MainActivity extends Activity {
     private static final int IMPORT_FILE = 101;
     private static final int EXPORT_FILE = 102;
     private WebView web;
+    private FrameLayout root;
     private ValueCallback<Uri[]> fileCallback;
     private final ExecutorService files = Executors.newSingleThreadExecutor();
     private boolean exporting;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(255, 245, 240));
+        root = new FrameLayout(this);
         if (Build.VERSION.SDK_INT >= 30) {
             getWindow().setDecorFitsSystemWindows(false);
             root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -66,8 +68,11 @@ public final class MainActivity extends Activity {
             });
         }
         web = new WebView(this);
-        web.setBackgroundColor(Color.rgb(255, 245, 240));
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
+        // 页面加载前先按上次的外观设置（首次按系统深色模式）上色，避免白屏闪烁
+        boolean systemDark = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        applyBars(getSharedPreferences("ui", MODE_PRIVATE).getBoolean("dark", systemDark));
         setContentView(root);
         root.requestApplyInsets();
 
@@ -188,9 +193,37 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** 深色/浅色：宿主背景、状态栏和导航栏跟随页面外观。 */
+    @SuppressWarnings("deprecation")
+    private void applyBars(boolean dark) {
+        int bg = dark ? Color.rgb(21, 23, 26) : Color.rgb(255, 245, 240);
+        root.setBackgroundColor(bg);
+        web.setBackgroundColor(bg);
+        getWindow().setStatusBarColor(bg);
+        getWindow().setNavigationBarColor(dark ? Color.rgb(21, 23, 26) : Color.rgb(245, 240, 235));
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController c = getWindow().getInsetsController();
+            if (c != null) {
+                int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                        | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                c.setSystemBarsAppearance(dark ? 0 : light, light);
+            }
+        } else {
+            View decor = getWindow().getDecorView();
+            int flags = decor.getSystemUiVisibility();
+            int light = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            decor.setSystemUiVisibility(dark ? flags & ~light : flags | light);
+        }
+    }
+
     private File pendingBackup() { return new File(getCacheDir(), "pending-backup.json"); }
 
     private final class BackupBridge {
+        @JavascriptInterface public void setDarkTheme(boolean dark) {
+            getSharedPreferences("ui", MODE_PRIVATE).edit().putBoolean("dark", dark).apply();
+            runOnUiThread(() -> { if (!isFinishing() && !isDestroyed()) applyBars(dark); });
+        }
+
         @JavascriptInterface public void exportBackup(String name, String json) {
             if (json == null || json.length() > 20_000_000) {
                 runOnUiThread(() -> toast("备份过大，无法导出"));

@@ -2,7 +2,7 @@
  * 数据全部存在浏览器本地（localStorage），SW 只负责断网时能打开页面。
  * 策略：网络优先、成功即缓存——有网时永远加载最新代码，断网时回退缓存。
  */
-const CACHE = "jizhang-v3";
+const CACHE = "jizhang-v4";
 const CORE = [
   "/",
   "/static/css/style.css",
