@@ -2,6 +2,8 @@
 
 本目录是「生活记账」，唯一正式 Pages 项目为 `jizhang`，网址为 `https://jizhang-d9k.pages.dev/`。
 
+- 正式站点以**项目 ID `a460326b-e5d7-4ead-9742-a7ebcb41ef32` + 域名 `jizhang-d9k.pages.dev`** 唯一识别。2026-10-15 发现 Cloudflare 后台显示名已变为 `account`（ID、域名、KV 绑定与部署历史均未变），经用户确认后，`cf_deploy.py` 改为按项目 ID 与域名校验，不再依赖可变的显示名。ID 或域名任一不符必须停止。
+
 - Pages 发布使用本目录 `cf_deploy.py`，保留目标与应用身份校验。不得用临时命令、另一项目的部署脚本或环境变量绕过校验。
 - `jiaban / jiaban-x2m.pages.dev` 属于 `F:/py/jiaban` 的「加班记录」。生活记账的任何资源、Worker 或安装包都不得发布到该站点，也不得修改其数据库绑定。
 - 保留生活记账现有的应用身份、签名、数据库和用户数据。项目之间不要复制或替换构建产物。

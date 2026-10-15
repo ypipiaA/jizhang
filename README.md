@@ -4,7 +4,7 @@
 
 - [打开网页版](https://jizhang-d9k.pages.dev/)
 - [安卓下载页面](https://jizhang-d9k.pages.dev/downloads/)
-- [下载 Android 1.0.1 安装包](https://jizhang-d9k.pages.dev/downloads/counts-1.0.1.apk)
+- [下载 Android 1.0.2 安装包](https://jizhang-d9k.pages.dev/downloads/counts-1.0.2.apk)
 
 ## 功能
 
@@ -50,7 +50,7 @@ python build_offline.py
 python build_android.py --java-home "<JDK目录>" --sdk "<Android SDK目录>"
 ```
 
-构建不依赖 Gradle。当前应用 ID 为 `com.counts.life`，版本为 `1.0.1`（versionCode `2`），输出为 `dist/android/counts-1.0.1.apk`。后续版本以 `android/app/src/main/AndroidManifest.xml` 为准。
+构建不依赖 Gradle。当前应用 ID 为 `com.counts.life`，版本为 `1.0.2`（versionCode `3`），输出为 `dist/android/counts-1.0.2.apk`。后续版本以 `android/app/src/main/AndroidManifest.xml` 为准。
 
 签名保存在本机 `.android-signing/`，请单独安全备份整个目录。后续覆盖升级必须沿用原签名；GitHub 源码不包含签名密钥、密码或个人账本。首次在新机器构建前，应恢复原有签名备份。
 

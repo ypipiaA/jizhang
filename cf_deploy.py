@@ -17,7 +17,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
-PROJECT = "jizhang"
+PROJECT = "jizhang"  # 应用身份名；Cloudflare 后台显示名可能被改，不作为定位依据
+# 正式站点的永久标识：项目 ID 不随改名变化，与正式域名共同锁定唯一发布目标
+PROJECT_ID = "a460326b-e5d7-4ead-9742-a7ebcb41ef32"
 EXPECTED_HOST = "jizhang-d9k.pages.dev"
 REQUESTED_PROJECT = os.environ.get("CF_PROJECT", PROJECT)
 TOKEN = os.environ.get("CF_TOKEN", "")
@@ -96,8 +98,23 @@ def multipart(fields: dict, files: dict | None = None) -> tuple[bytes, str]:
 def validate_target(project=None):
     if REQUESTED_PROJECT != "jizhang" or PROJECT != "jizhang":
         raise SystemExit("生活记账只能发布到 jizhang，禁止通过 CF_PROJECT 改成其他项目（包括 jiaban）")
-    if project is not None and (project.get("name") != "jizhang" or project.get("subdomain") != EXPECTED_HOST):
-        raise SystemExit("实际站点不是 jizhang-d9k.pages.dev，停止发布，未上传任何资源")
+    if project is not None and (
+        project.get("id") != PROJECT_ID
+        or project.get("subdomain") != EXPECTED_HOST
+        or EXPECTED_HOST not in (project.get("domains") or [])
+    ):
+        raise SystemExit("实际站点不是 jizhang-d9k.pages.dev（项目 ID 或域名不符），停止发布，未上传任何资源")
+
+
+def resolve_project():
+    """按永久项目 ID 找到正式站点（后台改名也能找到），返回其当前 API 名称与详情。"""
+    projects = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects")["result"] or []
+    hits = [x for x in projects if x.get("id") == PROJECT_ID]
+    if len(hits) != 1:
+        raise SystemExit("账户中找不到生活记账正式站点（项目 ID 不存在），停止发布，未上传任何资源")
+    project = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects/{hits[0]['name']}")["result"]
+    validate_target(project)
+    return project["name"], project
 
 
 def validate_release(public=PUBLIC):
@@ -115,15 +132,16 @@ def main():
     validate_release()
     if not TOKEN or not ACCOUNT:
         raise SystemExit("请为生活记账配置 CF_TOKEN 和 CF_ACC；发布目标固定为 jizhang")
-    project = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects/{PROJECT}")["result"]
-    validate_target(project)
+    api_name, project = resolve_project()
+    if api_name != PROJECT:
+        print(f"注意：Cloudflare 后台显示名为「{api_name}」，已按项目 ID 与域名确认是生活记账正式站点")
     files = collect_files()
     if not files:
         raise SystemExit("public/ 目录为空")
     print(f"待上传 {len(files)} 个文件")
 
     # 1. 取上传令牌
-    jwt = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects/{PROJECT}/upload-token")["result"]["jwt"]
+    jwt = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects/{api_name}/upload-token")["result"]["jwt"]
 
     # 2. 计算内容哈希
     payloads, manifest = [], {}
@@ -159,7 +177,7 @@ def main():
                                      "application/javascript+module")
         print("包含 _worker.js（云同步接口）")
     body, ctype = multipart({"manifest": json.dumps(manifest)}, extra_files)
-    res = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects/{PROJECT}/deployments",
+    res = req(f"{BASE}/accounts/{ACCOUNT}/pages/projects/{api_name}/deployments",
               "POST", body, headers={"Content-Type": ctype}, raw=True)
     d = res["result"]
     print("部署成功")
