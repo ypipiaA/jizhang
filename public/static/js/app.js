@@ -489,21 +489,12 @@ async function api(url, opts = {}) {
 
   if (path === "/api/summary") {
     const y = +p.get("year"), m = +p.get("month");
-    const py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1;
-    let income = 0, expense = 0, prevExpense = 0;
+    let income = 0, expense = 0;
     for (const r of dbAll()) {
-      if (inMonth(r, y, m)) {
-        if (r.type === "income") income += r.amount; else expense += r.amount;
-      } else if (r.type === "expense" && inMonth(r, py, pm)) {
-        prevExpense += r.amount;
-      }
+      if (!inMonth(r, y, m)) continue;
+      if (r.type === "income") income += r.amount; else expense += r.amount;
     }
-    // 已过去的天数：本月按今天算，过去的月份按整月算，未来月份为 0
-    const now = new Date(), ny = now.getFullYear(), nm = now.getMonth() + 1;
-    let days = 0;
-    if (y === ny && m === nm) days = now.getDate();
-    else if (y < ny || (y === ny && m < nm)) days = new Date(y, m, 0).getDate();
-    return { income, expense, balance: income - expense, prevExpense, days };
+    return { income, expense, balance: income - expense };
   }
 
   if (path === "/api/charts") {
@@ -1014,15 +1005,6 @@ async function loadSummary() {
   $("#lblExpense").textContent = cur ? "本月支出" : `${m}月支出`;
   $("#sumIncome").textContent = fmt(s.income);
   $("#sumExpense").textContent = fmt(s.expense);
-  $("#incomeStat").textContent = `结余 ${s.balance < 0 ? "-" : ""}${fmt(Math.abs(s.balance))}`;
-
-  const parts = [];
-  if (s.days > 0 && s.expense > 0) parts.push(`日均 ${fmt(s.expense / s.days)}`);
-  if (s.prevExpense > 0) {
-    const pct = Math.round(((s.expense - s.prevExpense) / s.prevExpense) * 100);
-    parts.push(`较上月 ${pct >= 0 ? "↑" : "↓"}${Math.abs(pct)}%`);
-  }
-  $("#expenseStat").textContent = parts.join(" · ");
   renderBudget(s.expense);
 }
 

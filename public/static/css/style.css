@@ -1141,12 +1141,6 @@ body {
 
 
 /* ==================== 概览卡片：统计行 + 预算进度 ==================== */
-.summary-card .stat {
-  font-size: 11px;
-  color: var(--text-muted);
-  min-height: 15px;
-}
-
 .budget { margin-top: 4px; }
 
 .budget-bar {
