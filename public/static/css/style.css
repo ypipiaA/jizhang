@@ -1491,3 +1491,29 @@ body {
 .mg-foot .btn-primary { flex: 1; margin-top: 0; }
 
 .st-wrap { flex-wrap: wrap; }
+
+/* 常用记录：每条右侧带删除 */
+.quick-item {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  background: var(--field);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.quick-item .quick-chip { border: none; background: transparent; border-radius: 0; padding-right: 4px; }
+
+.quick-del {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 6px 10px 6px 4px;
+  cursor: pointer;
+}
+
+.quick-del:active { color: var(--expense); }
+.quick-item:has(.quick-chip:active) { border-color: var(--primary); background: var(--primary-light); }

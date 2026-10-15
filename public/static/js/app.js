@@ -404,7 +404,7 @@ function initDateFilters() {
  * api(url, opts) 保持原签名，内部直接读写本地数据。
  */
 const LOCAL_CATEGORIES = [
-  { id: 5, name: "住房", type: "expense" },
+  { id: 5, name: "住房", type: "expense", retired: true }, // 已下架：不再作为选项，历史账单照常显示
   { id: 6, name: "其他支出", type: "expense" },
   { id: 7, name: "工资", type: "income" },
   { id: 8, name: "奖金", type: "income" },
@@ -455,7 +455,7 @@ async function api(url, opts = {}) {
 
   if (path === "/api/categories") {
     const t = p.get("type");
-    return LOCAL_CATEGORIES.filter((c) => !t || c.type === t);
+    return LOCAL_CATEGORIES.filter((c) => !c.retired && (!t || c.type === t));
   }
 
   if (path === "/api/records" && method === "POST") {
@@ -643,6 +643,7 @@ function setBudget(amount) {
 const LS_TOMBSTONES = "jz_deleted";
 const LS_RECUR = "jz_recurring"; // { list: [{ id, name, amount, day, category_id, start: "YYYY-MM" }], at }
 const LS_THEME = "jz_theme";     // auto / light / dark（仅本机）
+const LS_QUICK_HIDDEN = "jz_quick_hidden"; // { list: [组合键], at }：用户删掉的常用记录
 const LS_FOLDS = "jz_folds";     // 统计页卡片折叠状态（仅本机）
 
 // 参与云同步的设置：[云端字段, 本地键, 校验]
@@ -650,6 +651,7 @@ const SYNCED_SETTINGS = [
   ["budget", LS_BUDGET, (v) => v && typeof v.amount === "number"],
   ["items", LS_ITEMS, (v) => v && Array.isArray(v.list)],
   ["recurring", LS_RECUR, (v) => v && Array.isArray(v.list)],
+  ["quickHidden", LS_QUICK_HIDDEN, (v) => v && Array.isArray(v.list)],
 ];
 
 /* ---------- 固定账单：每月自动生成 ----------
@@ -1114,12 +1116,12 @@ function renderRecurList() {
 function openRecurForm(id) {
   rcEditing = id;
   const r = id ? getRecurring().find((x) => x.id === id) : null;
-  $("#rcCat").innerHTML = LOCAL_CATEGORIES.filter((c) => c.type === "expense")
+  $("#rcCat").innerHTML = LOCAL_CATEGORIES.filter((c) => c.type === "expense" && (!c.retired || (r && r.category_id === c.id)))
     .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
   $("#rcName").value = r ? r.name : "";
   $("#rcAmount").value = r ? r.amount : "";
   $("#rcDay").value = r ? r.day : "";
-  $("#rcCat").value = String(r ? r.category_id : findCategoryId("住房"));
+  $("#rcCat").value = String(r ? r.category_id : findCategoryId("其他支出"));
   $("#rcForm").hidden = false;
   $("#rcFoot").hidden = true;
   $("#rcName").focus();
@@ -1304,6 +1306,7 @@ function applyPreset(item) {
   if (activePresetName !== item.name) activeSub = null; // 换平台就重选子类型
   activePresetName = item.name;
   $("#amount").value = ""; // 每次选择都从 0 开始，不保留上一次的数值
+  $("#note").value = "";   // 切换项目时备注清空
   renderCategoryGrid();
 }
 
@@ -1377,6 +1380,7 @@ function renderCategoryGrid() {
       activePresetName = null;
       activeSub = null;
       $("#amount").value = ""; // 切换消费项目时金额归零
+      $("#note").value = "";
       grid.querySelectorAll(".cat-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       renderSubRow();
@@ -1385,7 +1389,20 @@ function renderCategoryGrid() {
 }
 
 /* ---------- 常用记录一键再记：近 90 天重复出现过的“项目·类型 备注”组合 ---------- */
+function getQuickHidden() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_QUICK_HIDDEN));
+    return v && Array.isArray(v.list) ? v.list : [];
+  } catch { return []; }
+}
+
+function setQuickHidden(list) {
+  localStorage.setItem(LS_QUICK_HIDDEN, JSON.stringify({ list, at: new Date().toISOString() }));
+  scheduleSync();
+}
+
 function quickCombos() {
+  const hidden = new Set(getQuickHidden());
   const since = localDateStr(new Date(Date.now() - 90 * 864e5));
   const map = new Map();
   for (const r of dbAll()) {
@@ -1400,7 +1417,8 @@ function quickCombos() {
     }
     if (!ch && !r.note) continue;
     const key = [ch, sub, r.note || "", ch ? "" : r.category_id].join("\u0001");
-    const c = map.get(key) || { channel: ch, sub, note: r.note || "",
+    if (hidden.has(key)) continue; // 用户删掉的常用记录不再推荐
+    const c = map.get(key) || { key, channel: ch, sub, note: r.note || "",
       category_id: ch ? null : r.category_id, n: 0, last: "" };
     c.n++;
     if (String(r.record_date) > c.last) c.last = String(r.record_date);
@@ -1417,8 +1435,22 @@ function renderQuickRow() {
   if (!list.length) { row.innerHTML = ""; return; }
   row.innerHTML = '<span class="quick-label">常用</span>' + list.map((c, i) => {
     const base = c.channel ? (c.sub ? `${c.channel}·${c.sub}` : c.channel) : (catById(c.category_id)?.name || "");
-    return `<button type="button" class="quick-chip" data-i="${i}">${esc(base)}${c.note ? ` <b>${esc(c.note)}</b>` : ""}</button>`;
+    return `<span class="quick-item"><button type="button" class="quick-chip" data-i="${i}">${esc(base)}${c.note ? ` <b>${esc(c.note)}</b>` : ""}</button>`
+      + `<button type="button" class="quick-del" data-i="${i}" aria-label="删除这条常用" title="删除">×</button></span>`;
   }).join("");
+  row.querySelectorAll(".quick-del").forEach((b) => {
+    b.addEventListener("click", () => {
+      const c = list[+b.dataset.i];
+      const before = getQuickHidden();
+      setQuickHidden([...new Set([...before, c.key])]);
+      renderQuickRow();
+      showToast("已删除这条常用", {
+        action: "撤销",
+        duration: 4000,
+        onAction: () => { setQuickHidden(getQuickHidden().filter((k) => k !== c.key)); renderQuickRow(); },
+      });
+    });
+  });
   row.querySelectorAll(".quick-chip").forEach((b) => {
     b.addEventListener("click", () => {
       const c = list[+b.dataset.i];
@@ -1582,8 +1614,8 @@ function edItemOptions(rec) {
   if (rec.type === "expense") {
     getItems().forEach((p) => opts.push({ key: "p:" + p.name, label: p.name, channel: p.name, catName: ITEM_CATEGORY }));
   }
-  LOCAL_CATEGORIES.filter((c) => c.type === rec.type)
-    .forEach((c) => opts.push({ key: "c:" + c.id, label: c.name, channel: "", catName: c.name }));
+  LOCAL_CATEGORIES.filter((c) => c.type === rec.type && (!c.retired || (!rec.channel && rec.category_id === c.id)))
+    .forEach((c) => opts.push({ key: "c:" + c.id, label: c.name, channel: "", catName: c.name, catId: c.id }));
   // 历史上用过、但现在已下架的平台（如“外卖”）：保留为可选项，避免编辑时被迫改掉
   if (rec.channel && !opts.some((o) => o.key === "p:" + rec.channel)) {
     opts.unshift({ key: "p:" + rec.channel, label: rec.channel, channel: rec.channel,
@@ -1663,7 +1695,7 @@ async function saveEdit() {
     body: JSON.stringify({
       amount,
       date: $("#edDate").value,
-      category_id: findCategoryId(opt.catName, rec.type),
+      category_id: opt.catId || findCategoryId(opt.catName, rec.type),
       channel: opt.channel,
       sub: edSub || "",
       note: $("#edNote").value,
@@ -2055,6 +2087,7 @@ function setupForm() {
       activePresetName = null;
       activeSub = null;
       $("#amount").value = ""; // 切换支出/收入时金额归零
+      $("#note").value = "";
       $$(".type-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       renderCategoryGrid();
