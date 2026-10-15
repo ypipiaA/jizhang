@@ -37,12 +37,18 @@
 
       <div class="summary-cards">
         <div class="summary-card income">
-          <span class="label">本月收入</span>
+          <span class="label" id="lblIncome">本月收入</span>
           <span class="value" id="sumIncome">¥0.00</span>
+          <span class="stat" id="incomeStat"></span>
         </div>
         <div class="summary-card expense">
-          <span class="label">本月支出</span>
+          <span class="label" id="lblExpense">本月支出</span>
           <span class="value" id="sumExpense">¥0.00</span>
+          <span class="stat" id="expenseStat"></span>
+          <div class="budget" id="budgetBox" hidden>
+            <div class="budget-bar"><i id="budgetFill"></i></div>
+            <span class="budget-text" id="budgetText"></span>
+          </div>
         </div>
       </div>
     </header>
@@ -103,6 +109,13 @@
               </div>
             </div>
           </div>
+          <div class="bill-search">
+            <input type="search" id="billSearch" placeholder="搜索本月账单：备注 / 平台 / 金额" autocomplete="off">
+          </div>
+          <div class="bill-summary">
+            <span id="billSummary"></span>
+            <span class="bill-hint">点账单可修改</span>
+          </div>
           <div class="record-list" id="recordList">
             <p class="empty">暂无记录，记一笔吧～</p>
           </div>
@@ -152,6 +165,27 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- 编辑账单 -->
+    <div class="mp-mask" id="edMask" hidden></div>
+    <div class="mp-sheet" id="edSheet" role="dialog" aria-modal="true" aria-label="编辑账单" tabindex="-1" hidden>
+      <div class="mp-sheet-handle"></div>
+      <div class="mp-sheet-header">
+        <span class="mp-sheet-title" id="edTitle">编辑支出</span>
+        <button type="button" class="mp-today" id="edCancel">取消</button>
+      </div>
+      <div class="ed-form">
+        <label class="ed-row"><span>金额</span><input type="number" id="edAmount" step="0.01" min="0.01" inputmode="decimal"></label>
+        <label class="ed-row"><span>日期</span><input type="text" id="edDate" readonly></label>
+        <label class="ed-row"><span>项目</span><select id="edItem"></select></label>
+        <div class="ed-row" id="edSubWrap" hidden><span>类型<em>必选</em></span><div class="ed-subs" id="edSubs"></div></div>
+        <label class="ed-row"><span>备注</span><input type="text" id="edNote" placeholder="可选"></label>
+      </div>
+      <div class="ed-actions">
+        <button type="button" class="btn-danger-ghost" id="edDelete">删除</button>
+        <button type="button" class="btn-primary" id="edSave">保存修改</button>
+      </div>
+    </div>
+
     <!-- 月份选择弹层：移动端为底部抽屉，桌面端为居中卡片 -->
     <div class="mp-mask" id="mpMask" hidden></div>
     <div class="mp-sheet" id="mpSheet" role="dialog" aria-modal="true" aria-label="选择月份" tabindex="-1" hidden>
@@ -196,6 +230,13 @@
         <button type="button" class="mp-today" id="stClose">完成</button>
       </div>
       <div class="st-group">
+        <div class="st-row">
+          <div class="st-info">
+            <div class="st-name">月度预算</div>
+            <div class="st-desc" id="budgetStatus">未设置 · 设置后支出卡片显示进度</div>
+          </div>
+          <button type="button" class="btn-ghost" id="btnBudget">设置</button>
+        </div>
         <div class="st-row">
           <div class="st-info">
             <div class="st-name">云同步</div>

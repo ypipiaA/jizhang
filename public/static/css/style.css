@@ -1042,7 +1042,24 @@ body {
   opacity: 0;
   transition: all 0.3s;
   pointer-events: none;
-  z-index: 100;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  white-space: nowrap;
+}
+
+.toast.has-action { pointer-events: auto; }
+
+.toast-action {
+  border: none;
+  background: transparent;
+  color: #ffb199;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 2px;
+  cursor: pointer;
 }
 
 .toast.show {
@@ -1121,3 +1138,185 @@ body {
     text-align: center;
   }
 }
+
+
+/* ==================== 概览卡片：统计行 + 预算进度 ==================== */
+.summary-card .stat {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-height: 15px;
+}
+
+.budget { margin-top: 4px; }
+
+.budget-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.budget-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--income);
+  transition: width 0.4s;
+}
+
+.budget.warn .budget-bar i { background: #f39c12; }
+.budget.over .budget-bar i { background: var(--expense); }
+
+.budget-text {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.budget.over .budget-text { color: var(--expense); font-weight: 600; }
+
+/* ==================== 账单：搜索 / 汇总 / 按天分组 ==================== */
+.bill-search input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 15px;
+  background: #fafafa;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bill-search input:focus { border-color: var(--primary); background: var(--surface); }
+
+.bill-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 10px 2px 4px;
+}
+
+.bill-hint { color: #c4bdb6; }
+
+.day-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 2px 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.day-head span:first-child { font-weight: 600; color: var(--text); }
+
+.record-item.editable {
+  cursor: pointer;
+  border-radius: 10px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.record-item.editable:active { background: var(--primary-light); }
+
+@media (hover: hover) {
+  .record-item.editable:hover { background: #fcf8f5; }
+}
+
+/* ==================== 子类型必选提示 ==================== */
+.sub-label em,
+.ed-row em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--primary);
+  background: var(--primary-light);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+}
+
+.sub-row.need .sub-btn,
+.ed-row.need .sub-btn { border-color: var(--expense); }
+
+.sub-row.need,
+.ed-row.need { animation: jz-shake 0.4s; }
+
+@keyframes jz-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+/* ==================== 编辑账单面板 ==================== */
+.ed-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ed-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: #fafafa;
+  border-radius: var(--radius-sm);
+  min-height: 48px;
+}
+
+.ed-row > span:first-child {
+  flex-shrink: 0;
+  width: 64px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ed-row input,
+.ed-row select {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--text);
+  outline: none;
+  padding: 8px 0;
+}
+
+#edDate { cursor: pointer; }
+
+.ed-subs { display: flex; gap: 8px; }
+
+.ed-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.ed-actions .btn-primary { flex: 1; margin-top: 0; }
+
+.btn-danger-ghost {
+  border: 1px solid var(--expense-bg);
+  background: var(--expense-bg);
+  color: var(--expense);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0 22px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* 日期选择器在编辑面板之上 */
+#dpMask { z-index: 210; }
+#dpSheet { z-index: 211; }

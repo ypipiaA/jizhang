@@ -63,6 +63,14 @@ const PRESET_ITEMS = [
   { name: "拼多多", img: ICON_PDD, category: "其他支出" },
 ];
 
+// 有子选项的平台（美团/淘宝/京东/抖音）必须选子类型，返回错误文案或 null
+function subRequiredError(type, channel, sub) {
+  if (type !== "expense" || !channel) return null;
+  const p = PRESET_ITEMS.find((x) => x.name === channel);
+  if (p && p.subs && !p.subs.includes(sub)) return `请先选择${p.name}的「${p.subs.join(" / ")}」`;
+  return null;
+}
+
 // 一条记录在账单里的显示名：平台 + 子类型（如“美团·外卖”），无渠道则用分类名
 function recLabel(r) {
   const base = r.channel || r.category_name || "";
@@ -95,11 +103,33 @@ function fmt(n) {
   return "¥" + Number(n).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function showToast(msg) {
+let toastTimer = null;
+
+// opts: { action: "撤销", onAction: fn, duration: ms }
+function showToast(msg, opts = {}) {
   const el = $("#toast");
-  el.textContent = msg;
+  clearTimeout(toastTimer);
+  el.innerHTML = "";
+  const span = document.createElement("span");
+  span.textContent = msg;
+  el.appendChild(span);
+  if (opts.action && opts.onAction) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "toast-action";
+    b.textContent = opts.action;
+    b.addEventListener("click", () => {
+      clearTimeout(toastTimer);
+      el.classList.remove("show", "has-action");
+      opts.onAction();
+    });
+    el.appendChild(b);
+    el.classList.add("has-action");
+  } else {
+    el.classList.remove("has-action");
+  }
   el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 2200);
+  toastTimer = setTimeout(() => el.classList.remove("show", "has-action"), opts.duration || 2200);
 }
 
 function getGreeting() {
@@ -205,10 +235,11 @@ function closeSheet() {
 
 /* ---------- 自定义记账日期选择器（紧凑日历，替代系统日历弹窗） ---------- */
 let dpYear, dpMonth, dpCloseTimer = null;
+let dpTarget = "#recordDate"; // 选中日期写到哪个输入框
 
 function renderDp() {
   $("#dpLabel").textContent = `${dpYear}年${dpMonth}月`;
-  const sel = $("#recordDate").value;
+  const sel = $(dpTarget).value;
   const todayStr = localDateStr();
   const firstWeekday = new Date(dpYear, dpMonth - 1, 1).getDay(); // 0=周日
   const days = new Date(dpYear, dpMonth, 0).getDate();
@@ -225,7 +256,7 @@ function renderDp() {
   grid.innerHTML = cells.join("");
   grid.querySelectorAll("button.dp-cell").forEach((b) => {
     b.addEventListener("click", () => {
-      $("#recordDate").value = b.dataset.val;
+      $(dpTarget).value = b.dataset.val;
       closeDp();
     });
   });
@@ -238,9 +269,10 @@ function stepDpMonth(delta) {
   renderDp();
 }
 
-function openDp() {
+function openDp(target) {
   clearTimeout(dpCloseTimer);
-  const [y, m] = ($("#recordDate").value || localDateStr()).split("-").map(Number);
+  dpTarget = typeof target === "string" ? target : "#recordDate";
+  const [y, m] = ($(dpTarget).value || localDateStr()).split("-").map(Number);
   dpYear = y;
   dpMonth = m;
   renderDp();
@@ -255,7 +287,7 @@ function openDp() {
 function closeDp() {
   $("#dpMask").classList.remove("show");
   $("#dpSheet").classList.remove("show");
-  document.body.style.overflow = "";
+  if ($("#edSheet").hidden) document.body.style.overflow = ""; // 编辑面板还开着就继续锁滚动
   clearTimeout(dpCloseTimer);
   dpCloseTimer = setTimeout(() => {
     $("#dpMask").hidden = true;
@@ -282,6 +314,7 @@ function initDateFilters() {
     if (!$("#dpSheet").hidden) closeDp();
     if (!$("#ddSheet").hidden) closeDayDetail();
     if (!$("#stSheet").hidden) closeSettings();
+    if (!$("#edSheet").hidden && $("#dpSheet").hidden) closeEdit();
   });
   $("#ddMask").addEventListener("click", closeDayDetail);
 
@@ -292,7 +325,7 @@ function initDateFilters() {
   $("#dpPrev").addEventListener("click", () => stepDpMonth(-1));
   $("#dpNext").addEventListener("click", () => stepDpMonth(1));
   $("#dpToday").addEventListener("click", () => {
-    $("#recordDate").value = localDateStr();
+    $(dpTarget).value = localDateStr();
     closeDp();
   });
 
@@ -381,6 +414,8 @@ async function api(url, opts = {}) {
       if (!catById(d.category_id)) return { ok: false, error: "请选择分类" };
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date || "")) return { ok: false, error: "日期无效" };
       if (d.type !== "income" && d.type !== "expense") return { ok: false, error: "无效的类型" };
+      const subErr = subRequiredError(d.type, (d.channel || "").trim(), (d.sub || "").trim());
+      if (subErr) return { ok: false, error: subErr };
       const recs = dbAll();
       const id = recs.length ? Math.max(...recs.map((r) => r.id)) + 1 : 1;
       recs.push({
@@ -410,13 +445,31 @@ async function api(url, opts = {}) {
   }
 
   if (del && method === "PATCH") {
-    // 修改备注
+    // 编辑账单：金额 / 日期 / 分类 / 平台 / 子类型 / 备注
     try {
       const d = JSON.parse(opts.body);
       const recs = dbAll();
       const rec = recs.find((r) => r.id === +del[1]);
       if (!rec) return { ok: false, error: "记录不存在" };
+      if ("amount" in d) {
+        const a = Math.round(parseFloat(d.amount) * 100) / 100;
+        if (!(a > 0)) return { ok: false, error: "金额必须大于 0" };
+        rec.amount = a;
+      }
+      if ("date" in d) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date || "")) return { ok: false, error: "日期无效" };
+        rec.record_date = d.date;
+      }
+      if ("category_id" in d) {
+        const cat = catById(d.category_id);
+        if (!cat || cat.type !== rec.type) return { ok: false, error: "分类无效" };
+        rec.category_id = cat.id;
+      }
+      if ("channel" in d) rec.channel = String(d.channel || "").trim();
+      if ("sub" in d) rec.sub = String(d.sub || "").trim();
       if ("note" in d) rec.note = String(d.note).trim();
+      const subErr = subRequiredError(rec.type, rec.channel, rec.sub);
+      if (subErr) return { ok: false, error: subErr }; // 未写盘，原记录不变
       rec.updated_at = new Date().toISOString(); // 冲突合并时新者胜
       dbWrite(recs);
       scheduleSync();
@@ -436,12 +489,21 @@ async function api(url, opts = {}) {
 
   if (path === "/api/summary") {
     const y = +p.get("year"), m = +p.get("month");
-    let income = 0, expense = 0;
+    const py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1;
+    let income = 0, expense = 0, prevExpense = 0;
     for (const r of dbAll()) {
-      if (!inMonth(r, y, m)) continue;
-      if (r.type === "income") income += r.amount; else expense += r.amount;
+      if (inMonth(r, y, m)) {
+        if (r.type === "income") income += r.amount; else expense += r.amount;
+      } else if (r.type === "expense" && inMonth(r, py, pm)) {
+        prevExpense += r.amount;
+      }
     }
-    return { income, expense, balance: income - expense };
+    // 已过去的天数：本月按今天算，过去的月份按整月算，未来月份为 0
+    const now = new Date(), ny = now.getFullYear(), nm = now.getMonth() + 1;
+    let days = 0;
+    if (y === ny && m === nm) days = now.getDate();
+    else if (y < ny || (y === ny && m < nm)) days = new Date(y, m, 0).getDate();
+    return { income, expense, balance: income - expense, prevExpense, days };
   }
 
   if (path === "/api/charts") {
@@ -521,6 +583,19 @@ async function migrateFromServer() {
  */
 const SYNC_ENDPOINT = "https://jizhang-d9k.pages.dev/api/sync";
 const LS_SYNC_PASS = "jz_sync_pass";
+const LS_BUDGET = "jz_budget"; // { amount, at }：每月支出预算，amount=0 表示关闭
+
+function getBudget() {
+  try {
+    const b = JSON.parse(localStorage.getItem(LS_BUDGET));
+    return b && typeof b.amount === "number" ? b : null;
+  } catch { return null; }
+}
+
+function setBudget(amount) {
+  localStorage.setItem(LS_BUDGET, JSON.stringify({ amount, at: new Date().toISOString() }));
+  scheduleSync();
+}
 const LS_TOMBSTONES = "jz_deleted";
 
 function newUid() {
@@ -589,6 +664,15 @@ async function syncNow(silent) {
     const cloudRecs = cloud && Array.isArray(cloud.records) ? cloud.records : [];
     const cloudTombs = cloud && Array.isArray(cloud.tombstones) ? cloud.tombstones : [];
 
+    // 预算设置：两端取较新的一份
+    let budget = getBudget();
+    const cloudBudget = cloud && cloud.settings && cloud.settings.budget;
+    if (cloudBudget && typeof cloudBudget.amount === "number" &&
+        (!budget || String(cloudBudget.at || "") > String(budget.at || ""))) {
+      budget = cloudBudget;
+      localStorage.setItem(LS_BUDGET, JSON.stringify(cloudBudget));
+    }
+
     // 2. 合并：墓碑并集 → 记录按 uid 并集（同 uid 取修改时间新的）→ 剔除已删除
     const tombs = [...new Set([...getTombstones(), ...cloudTombs])];
     const byUid = new Map();
@@ -613,6 +697,7 @@ async function syncNow(silent) {
       body: JSON.stringify({
         records: merged,
         tombstones: tombs,
+        settings: { ...((cloud && cloud.settings) || {}), ...(budget ? { budget } : {}) },
         updated_at: new Date().toISOString(),
       }),
     });
@@ -693,10 +778,20 @@ function setupSyncCode() {
   });
 }
 
+function renderBudgetStatus() {
+  const b = getBudget();
+  const on = b && b.amount > 0;
+  $("#budgetStatus").textContent = on
+    ? `每月 ${fmt(b.amount)} · 支出卡片显示进度`
+    : "未设置 · 设置后支出卡片显示进度";
+  $("#btnBudget").textContent = on ? "修改" : "设置";
+}
+
 function openSettings() {
   clearTimeout(stCloseTimer);
   codeVisible = false; // 每次打开设置默认遮住同步码
   renderSyncStatus();
+  renderBudgetStatus();
   $("#stMask").hidden = false;
   $("#stSheet").hidden = false;
   void $("#stSheet").offsetHeight;
@@ -719,6 +814,17 @@ function closeSettings() {
 
 function setupSettings() {
   $("#btnSettings").addEventListener("click", openSettings);
+  $("#btnBudget").addEventListener("click", () => {
+    const b = getBudget();
+    const v = prompt("设置每月支出预算（元）\n填 0 或留空 = 关闭预算", b && b.amount > 0 ? b.amount : "");
+    if (v === null) return;
+    const n = v.trim() === "" ? 0 : Math.round(parseFloat(v) * 100) / 100;
+    if (isNaN(n) || n < 0) return showToast("请输入有效金额");
+    setBudget(n);
+    renderBudgetStatus();
+    loadSummary();
+    showToast(n > 0 ? `预算已设为 ${fmt(n)} ✓` : "已关闭预算");
+  });
   $("#stClose").addEventListener("click", closeSettings);
   $("#stMask").addEventListener("click", closeSettings);
 }
@@ -827,12 +933,14 @@ function renderSubRow() {
     return;
   }
   row.hidden = false;
-  row.innerHTML = `<span class="sub-label">${item.name}</span>` + item.subs.map((sname) => `
+  row.classList.remove("need");
+  row.innerHTML = `<span class="sub-label">${item.name}<em>必选</em></span>` + item.subs.map((sname) => `
     <button type="button" class="sub-btn${activeSub === sname ? " active" : ""}" data-sub="${sname}">${sname}</button>
   `).join("");
   row.querySelectorAll(".sub-btn").forEach((b) => {
     b.addEventListener("click", () => {
       activeSub = b.dataset.sub;
+      row.classList.remove("need");
       row.querySelectorAll(".sub-btn").forEach((x) => x.classList.toggle("active", x === b));
     });
   });
@@ -901,8 +1009,35 @@ async function loadSummary() {
   const y = getFilterYear(), m = getFilterMonth();
   const s = await api(`/api/summary?year=${y}&month=${m}`);
   if (g !== gens.summary) return;
+  const cur = isCurrentMonth(y, m);
+  $("#lblIncome").textContent = cur ? "本月收入" : `${m}月收入`;
+  $("#lblExpense").textContent = cur ? "本月支出" : `${m}月支出`;
   $("#sumIncome").textContent = fmt(s.income);
   $("#sumExpense").textContent = fmt(s.expense);
+  $("#incomeStat").textContent = `结余 ${s.balance < 0 ? "-" : ""}${fmt(Math.abs(s.balance))}`;
+
+  const parts = [];
+  if (s.days > 0 && s.expense > 0) parts.push(`日均 ${fmt(s.expense / s.days)}`);
+  if (s.prevExpense > 0) {
+    const pct = Math.round(((s.expense - s.prevExpense) / s.prevExpense) * 100);
+    parts.push(`较上月 ${pct >= 0 ? "↑" : "↓"}${Math.abs(pct)}%`);
+  }
+  $("#expenseStat").textContent = parts.join(" · ");
+  renderBudget(s.expense);
+}
+
+function renderBudget(expense) {
+  const b = getBudget();
+  const box = $("#budgetBox");
+  if (!b || !(b.amount > 0)) { box.hidden = true; return; }
+  box.hidden = false;
+  const pct = expense / b.amount;
+  $("#budgetFill").style.width = Math.min(100, pct * 100) + "%";
+  box.classList.toggle("warn", pct >= 0.8 && pct <= 1);
+  box.classList.toggle("over", pct > 1);
+  $("#budgetText").textContent = pct > 1
+    ? `预算 ${fmt(b.amount)} · 已超支 ${fmt(expense - b.amount)}`
+    : `预算 ${fmt(b.amount)} · 剩余 ${fmt(b.amount - expense)}`;
 }
 
 let sortAsc = false; // 账单排序：false=最新在前（默认），true=最早在前
@@ -927,56 +1062,204 @@ async function loadRecords() {
   if (labels.includes(keep)) chSel.value = keep; // 保持当前选择
   if (chSel.value) records = records.filter((r) => (r.channel || r.category_name) === chSel.value);
 
+  // 搜索：备注 / 平台 / 分类 / 金额
+  const q = ($("#billSearch").value || "").trim().toLowerCase();
+  if (q) {
+    records = records.filter((r) =>
+      [r.note, recLabel(r), r.category_name, String(r.amount)]
+        .some((v) => String(v || "").toLowerCase().includes(q)));
+  }
+
   const list = $("#recordList");
+  let tIn = 0, tOut = 0;
+  records.forEach((r) => { if (r.type === "income") tIn += r.amount; else tOut += r.amount; });
+  $("#billSummary").textContent = records.length
+    ? `共 ${records.length} 笔 · 支出 ${fmt(tOut)}${tIn ? ` · 收入 ${fmt(tIn)}` : ""}`
+    : "";
 
   if (!records.length) {
-    list.innerHTML = '<p class="empty">暂无记录，记一笔吧～</p>';
+    const filtered = q || chSel.value || filterTypeValue;
+    list.innerHTML = `<p class="empty">${filtered ? "没有符合条件的账单" : "暂无记录，记一笔吧～"}</p>`;
     return;
   }
 
-  list.innerHTML = records.map((r) => {
-    const isIncome = r.type === "income";
-    const icon = iconForRecord(r.category_name, r.note, r.channel);
-    // 选了渠道（抖音/美团等）就显示渠道名，不显示“其他支出”
-    const label = recLabel(r);
-    const prefix = isIncome ? "+" : "-";
-    return `
-      <div class="record-item">
-        <div class="record-icon ${r.type}">${icon}</div>
-        <div class="record-info">
-          <div class="name">${esc(label)}</div>
-          <div class="meta">${esc(r.record_date)}${r.note ? " · " + esc(r.note) : ""}</div>
-        </div>
-        <span class="record-amount ${r.type}">${prefix}${fmt(r.amount).replace("¥", "")}</span>
-        <button class="btn-edit" data-id="${r.id}" data-note="${esc(r.note || "")}" title="编辑备注">✎</button>
-        <button class="btn-delete" data-id="${r.id}" title="删除">×</button>
-      </div>`;
+  // 按日期分组，每组带当天小计
+  const groups = [];
+  for (const r of records) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === r.record_date) last.items.push(r);
+    else groups.push({ date: r.record_date, items: [r] });
+  }
+  const rowHtml = (r) => `
+    <div class="record-item editable" data-id="${r.id}" role="button" tabindex="0" title="点击编辑">
+      <div class="record-icon ${r.type}">${iconForRecord(r.category_name, r.note, r.channel)}</div>
+      <div class="record-info">
+        <div class="name">${esc(recLabel(r))}</div>
+        ${r.note ? `<div class="meta">${esc(r.note)}</div>` : ""}
+      </div>
+      <span class="record-amount ${r.type}">${r.type === "income" ? "+" : "-"}${fmt(r.amount).replace("¥", "")}</span>
+      <button class="btn-delete" data-id="${r.id}" title="删除" aria-label="删除">×</button>
+    </div>`;
+  const todayStr = localDateStr();
+  list.innerHTML = groups.map((g) => {
+    const [yy, mm, dd] = g.date.split("-").map(Number);
+    const wk = "日一二三四五六"[new Date(yy, mm - 1, dd).getDay()];
+    const out = g.items.filter((r) => r.type === "expense").reduce((a, r) => a + r.amount, 0);
+    const inc = g.items.filter((r) => r.type === "income").reduce((a, r) => a + r.amount, 0);
+    const tot = [out ? `支出 ${fmt(out)}` : "", inc ? `收入 ${fmt(inc)}` : ""].filter(Boolean).join("  ");
+    return `<div class="day-head"><span>${mm}月${dd}日 周${wk}${g.date === todayStr ? " · 今天" : ""}</span><span>${tot}</span></div>`
+      + g.items.map(rowHtml).join("");
   }).join("");
 
   list.querySelectorAll(".btn-delete").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      if (!confirm("确定删除这条记录？")) return;
-      await api(`/api/records/${btn.dataset.id}`, { method: "DELETE" });
-      showToast("已删除");
-      refreshAll();
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteWithUndo(btn.dataset.id);
     });
   });
+  list.querySelectorAll(".record-item.editable").forEach((row) => {
+    row.addEventListener("click", () => openEdit(row.dataset.id));
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter") openEdit(row.dataset.id); });
+  });
+}
 
-  list.querySelectorAll(".btn-edit").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const next = prompt("修改备注", btn.dataset.note || "");
-      if (next === null || next === btn.dataset.note) return;
-      const res = await api(`/api/records/${btn.dataset.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ note: next }),
-      });
-      if (res && res.ok) {
-        showToast("备注已更新 ✓");
-        refreshAll();
-      } else {
-        showToast(res?.error || "保存失败");
-      }
+/* ---------- 删除（可撤销） ---------- */
+async function deleteWithUndo(id) {
+  const rec = dbAll().find((r) => r.id === +id);
+  if (!rec) return;
+  await api(`/api/records/${id}`, { method: "DELETE" });
+  refreshAll();
+  showToast(`已删除 ${recLabel({ ...rec, category_name: catById(rec.category_id)?.name })} ${fmt(rec.amount)}`, {
+    action: "撤销",
+    duration: 5000,
+    onAction: () => {
+      // 原 uid 已写入删除墓碑（可能已同步到云端），恢复时换新 uid，避免被墓碑再次删掉
+      const recs = dbAll();
+      const nid = recs.length ? Math.max(...recs.map((r) => r.id)) + 1 : 1;
+      recs.push({ ...rec, id: nid, uid: newUid(), updated_at: new Date().toISOString() });
+      dbWrite(recs);
+      scheduleSync();
+      refreshAll();
+      showToast("已恢复 ✓");
+    },
+  });
+}
+
+/* ---------- 编辑账单面板 ---------- */
+let edId = null, edSub = null, edOpts = [], edCloseTimer = null;
+
+function edItemOptions(rec) {
+  const opts = [];
+  if (rec.type === "expense") {
+    PRESET_ITEMS.forEach((p) => opts.push({ key: "p:" + p.name, label: p.name, channel: p.name, catName: p.category }));
+  }
+  LOCAL_CATEGORIES.filter((c) => c.type === rec.type)
+    .forEach((c) => opts.push({ key: "c:" + c.id, label: c.name, channel: "", catName: c.name }));
+  // 历史上用过、但现在已下架的平台（如“外卖”）：保留为可选项，避免编辑时被迫改掉
+  if (rec.channel && !opts.some((o) => o.key === "p:" + rec.channel)) {
+    opts.unshift({ key: "p:" + rec.channel, label: rec.channel, channel: rec.channel,
+      catName: catById(rec.category_id)?.name || "其他支出" });
+  }
+  return opts;
+}
+
+function renderEdSubs() {
+  const key = $("#edItem").value;
+  const p = PRESET_ITEMS.find((x) => "p:" + x.name === key);
+  const wrap = $("#edSubWrap");
+  if (!p || !p.subs) { wrap.hidden = true; edSub = null; return; }
+  if (!p.subs.includes(edSub)) edSub = null;
+  wrap.hidden = false;
+  wrap.classList.remove("need");
+  $("#edSubs").innerHTML = p.subs.map((n) =>
+    `<button type="button" class="sub-btn${edSub === n ? " active" : ""}" data-sub="${n}">${n}</button>`).join("");
+  $("#edSubs").querySelectorAll(".sub-btn").forEach((b) => {
+    b.addEventListener("click", () => {
+      edSub = b.dataset.sub;
+      wrap.classList.remove("need");
+      $("#edSubs").querySelectorAll(".sub-btn").forEach((x) => x.classList.toggle("active", x === b));
     });
+  });
+}
+
+function openEdit(id) {
+  const rec = dbAll().find((r) => r.id === +id);
+  if (!rec) return;
+  clearTimeout(edCloseTimer);
+  edId = rec.id;
+  edSub = rec.sub || null;
+  edOpts = edItemOptions(rec);
+  $("#edTitle").textContent = rec.type === "income" ? "编辑收入" : "编辑支出";
+  $("#edAmount").value = rec.amount;
+  $("#edDate").value = rec.record_date;
+  $("#edNote").value = rec.note || "";
+  $("#edItem").innerHTML = edOpts.map((o) => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join("");
+  $("#edItem").value = rec.channel ? "p:" + rec.channel : "c:" + rec.category_id;
+  renderEdSubs();
+  $("#edMask").hidden = false;
+  $("#edSheet").hidden = false;
+  void $("#edSheet").offsetHeight;
+  $("#edMask").classList.add("show");
+  $("#edSheet").classList.add("show");
+  document.body.style.overflow = "hidden";
+  $("#edSheet").focus();
+}
+
+function closeEdit() {
+  $("#edMask").classList.remove("show");
+  $("#edSheet").classList.remove("show");
+  document.body.style.overflow = "";
+  clearTimeout(edCloseTimer);
+  edCloseTimer = setTimeout(() => {
+    $("#edMask").hidden = true;
+    $("#edSheet").hidden = true;
+  }, 250);
+}
+
+async function saveEdit() {
+  const opt = edOpts.find((o) => o.key === $("#edItem").value);
+  if (!opt) return showToast("请选择项目");
+  const amount = +$("#edAmount").value;
+  if (!(amount > 0)) return showToast("请输入有效金额");
+  const rec = dbAll().find((r) => r.id === edId);
+  if (!rec) return closeEdit();
+  const err = subRequiredError(rec.type, opt.channel, edSub || "");
+  if (err) {
+    const wrap = $("#edSubWrap");
+    wrap.classList.remove("need"); void wrap.offsetWidth; wrap.classList.add("need");
+    return showToast(err);
+  }
+  const res = await api(`/api/records/${edId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      amount,
+      date: $("#edDate").value,
+      category_id: findCategoryId(opt.catName, rec.type),
+      channel: opt.channel,
+      sub: edSub || "",
+      note: $("#edNote").value,
+    }),
+  });
+  if (res && res.ok) {
+    const [ny, nm] = $("#edDate").value.split("-").map(Number);
+    closeEdit();
+    showToast(ny === getFilterYear() && nm === getFilterMonth() ? "已保存修改 ✓" : `已保存，记录移到 ${ny}年${nm}月`);
+    refreshAll();
+  } else {
+    showToast(res?.error || "保存失败");
+  }
+}
+
+function setupEdit() {
+  $("#edMask").addEventListener("click", closeEdit);
+  $("#edCancel").addEventListener("click", closeEdit);
+  $("#edItem").addEventListener("change", () => { edSub = null; renderEdSubs(); }); // 换平台必须重新选类型
+  $("#edDate").addEventListener("click", () => openDp("#edDate"));
+  $("#edSave").addEventListener("click", saveEdit);
+  $("#edDelete").addEventListener("click", () => {
+    const id = edId;
+    closeEdit();
+    deleteWithUndo(id);
   });
 }
 
@@ -1320,6 +1603,13 @@ function setupForm() {
     const amount = +$("#amount").value;
     if (!amount || amount <= 0) return showToast("请输入有效金额");
     if (!selectedCategoryId) return showToast("请选择分类"); // 离线冷启动分类可能为空
+    const subErr = subRequiredError(currentType, activePresetName || "", activeSub || "");
+    if (subErr) {
+      const row = $("#subRow");
+      row.classList.remove("need"); void row.offsetWidth; row.classList.add("need"); // 重新触发抖动
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      return showToast(subErr);
+    }
 
     const payload = {
       type: currentType,
@@ -1361,11 +1651,12 @@ function setupFilters() {
       filterTypeValue = btn.dataset.type;
       $$("#typeSeg .seg-btn").forEach((b) => b.classList.toggle("active", b === btn));
       // 点“全部”= 清除所有筛选，左侧平台同步回“全部平台”
-      if (!filterTypeValue) $("#filterChannel").value = "";
+      if (!filterTypeValue) { $("#filterChannel").value = ""; $("#billSearch").value = ""; }
       loadRecords();
     });
   });
   $("#filterChannel").addEventListener("change", loadRecords);
+  $("#billSearch").addEventListener("input", loadRecords);
   $("#btnSort").addEventListener("click", () => {
     sortAsc = !sortAsc;
     $("#btnSort").textContent = sortAsc ? "日期↑" : "日期↓";
@@ -1383,6 +1674,7 @@ async function init() {
   setupSync();
   setupSettings();
   setupSyncCode();
+  setupEdit();
   await migrateFromServer(); // 老版本 app.py 的数据一次性搬进本地
   {
     // 旧分类（餐饮/交通/购物/娱乐）的历史记录自动归并到“其他支出”
